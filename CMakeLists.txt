@@ -1,15 +1,17 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.21...4.1)
 project(
   OrderMatchingEngine
   VERSION 0.1.0
   LANGUAGES CXX)
 
-add_library(Engine STATIC src/engine/engine.cpp)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
-find_package(Catch2 3 REQUIRED)
-add_executable(tests src/engine/engine.test.cpp)
-target_link_libraries(tests PRIVATE Catch2::Catch2WithMain Engine)
+option(BUILD_TESTING "Build the testing tree." ON)
 
-include(CTest)
-include(Catch)
-catch_discover_tests(tests)
+if(PROJECT_IS_TOP_LEVEL AND BUILD_TESTING)
+  include(CTest)
+  find_package(Catch2 3 REQUIRED)
+  include(Catch)
+endif()
+
+add_subdirectory(src/book)
