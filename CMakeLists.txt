@@ -15,3 +15,8 @@ if(PROJECT_IS_TOP_LEVEL AND BUILD_TESTING)
 endif()
 
 add_subdirectory(src/book)
+
+
+if(PROJECT_IS_TOP_LEVEL AND BUILD_TESTING)
+  add_subdirectory(tests/benchmark)
+endif()

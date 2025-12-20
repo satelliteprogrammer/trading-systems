@@ -125,10 +125,13 @@ auto Book::execute(SellOrder order) -> SellOrder {
 
     return order;
 }
+
 auto Book::spread() const -> std::pair<Price, Price> {
     auto best_bid = bids.empty() ? 0 : bids.begin()->first;
     auto best_ask = asks.empty() ? 0 : asks.begin()->first;
     return {best_bid, best_ask};
 }
+
+void Book::reserve(std::size_t n) { orders.reserve(n); }
 
 } // namespace ome::book

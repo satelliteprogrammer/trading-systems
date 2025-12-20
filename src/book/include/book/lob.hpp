@@ -52,6 +52,9 @@ class Book {
     /// time: O(1)
     auto spread() const -> std::pair<Price, Price>;
 
+    /// Reserves space for n orders to avoid rehashing.
+    void reserve(std::size_t n);
+
   private:
     auto execute(BuyOrder order) -> BuyOrder;
     auto execute(SellOrder order) -> SellOrder;
