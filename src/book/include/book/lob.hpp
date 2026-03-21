@@ -2,9 +2,11 @@
 
 #include <chrono>
 #include <cstdint>
+#include <expected>
 #include <functional>
 #include <list>
 #include <map>
+#include <string_view>
 #include <unordered_map>
 
 // TODO: research alignment and packing
@@ -38,24 +40,28 @@ class Book {
   public:
     /// Adds buy order to book. If it can be matched, it will be executed immediately.
     /// time: O(bids.size()) for first order at limit, O(1) for all others
-    void add(BuyOrder);
+    ///
+    /// \return true if order was added to the book
+    auto add(BuyOrder) -> std::expected<void, std::string_view>;
 
     /// Adds sell order to book. If it can be matched, it will be executed immediately.
     /// time: O(asks.size()) for first order at limit, O(1) for all others
-    void add(SellOrder);
+    ///
+    /// \return true if order was added to the book
+    auto add(SellOrder) -> std::expected<void, std::string_view>;
 
     /// Cancels order by id. Returns true if order was found and cancelled.
     /// time: amortized O(1)
     /// @warning weak_ptr to the order will remain in the order book until it is cleaned up
-    auto cancel(OrderId) -> bool;
+    auto cancel(OrderId) -> std::expected<void, std::string_view>;
 
     /// Returns total volume at given price level.
     /// time: O(1)
-    auto volume(Price) const -> std::uint64_t;
+    auto volume(Price) const -> std::expected<std::uint64_t, std::string_view>;
 
     /// Returns best bid and ask prices.
     /// time: O(1)
-    auto spread() const -> std::pair<Price, Price>;
+    auto spread() const -> std::expected<std::pair<Price, Price>, std::string_view>;
 
     /// Reserves space for n orders to avoid rehashing.
     void reserve(std::size_t n);

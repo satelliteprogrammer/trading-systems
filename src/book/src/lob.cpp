@@ -1,15 +1,16 @@
 #include "book/lob.hpp"
 
+#include <expected>
 #include <ranges>
-#include <stdexcept>
+#include <utility>
 
 namespace ome::book {
 
-void Book::add(BuyOrder order) {
+auto Book::add(BuyOrder order) -> std::expected<void, std::string_view> {
     order = execute(order);
 
     if (order.limit.quantity == 0) {
-        return;
+        return {};
     }
 
     orders[order.order_id] = std::make_shared<Order>(order);
@@ -19,13 +20,13 @@ void Book::add(BuyOrder order) {
     }
     bids[order.limit.price].orders.emplace_back(orders[order.order_id]);
     bids[order.limit.price].total_quantity += order.limit.quantity;
+
+    return {};
 }
 
-void Book::add(SellOrder order) {
-    order = execute(order);
-
+auto Book::add(SellOrder order) -> std::expected<void, std::string_view> {
     if (order.limit.quantity == 0) {
-        return;
+        return {};
     }
 
     orders[order.order_id] = std::make_shared<Order>(order);
@@ -35,11 +36,13 @@ void Book::add(SellOrder order) {
     }
     asks[order.limit.price].orders.emplace_back(orders[order.order_id]);
     asks[order.limit.price].total_quantity += order.limit.quantity;
+
+    return {};
 }
 
-auto Book::cancel(OrderId id) -> bool {
+auto Book::cancel(OrderId id) -> std::expected<void, std::string_view> {
     if (!orders.contains(id)) {
-        return false;
+        return std::unexpected{"order not found"};
     }
 
     auto const &order = orders[id];
@@ -48,13 +51,17 @@ auto Book::cancel(OrderId id) -> bool {
     } else if (auto it = asks.find(order->limit.price); it != asks.end()) {
         it->second.total_quantity -= order->limit.quantity;
     } else {
-        throw std::runtime_error{"order not found"};
+        std::unreachable();
     }
 
-    return orders.erase(id) != 0U;
+    if (orders.erase(id) == 0U) {
+        std::unreachable();
+    }
+
+    return {};
 }
 
-auto Book::volume(Price price) const -> std::uint64_t {
+auto Book::volume(Price price) const -> std::expected<std::uint64_t, std::string_view> {
     if (price > asks.begin()->first) {
         if (auto it = bids.find(price); it != bids.end()) {
             return it->second.total_quantity;
@@ -64,6 +71,7 @@ auto Book::volume(Price price) const -> std::uint64_t {
             return it->second.total_quantity;
         }
     }
+
     // limit not found
     return 0;
 }
@@ -126,10 +134,10 @@ auto Book::execute(SellOrder order) -> SellOrder {
     return order;
 }
 
-auto Book::spread() const -> std::pair<Price, Price> {
+auto Book::spread() const -> std::expected<std::pair<Price, Price>, std::string_view> {
     auto best_bid = bids.empty() ? 0 : bids.begin()->first;
     auto best_ask = asks.empty() ? 0 : asks.begin()->first;
-    return {best_bid, best_ask};
+    return std::pair{best_bid, best_ask};
 }
 
 void Book::reserve(std::size_t n) { orders.reserve(n); }

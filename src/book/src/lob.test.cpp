@@ -33,15 +33,15 @@ TEST_CASE("Book add and cancel test", "[lob]") {
     OrderId buy_id = 0;
     Price price = 100;
 
-    book.add(BuyOrder{buy_id, {.price = price, .quantity = 10}, {}});
+    REQUIRE(book.add(BuyOrder{buy_id, {.price = price, .quantity = 10}, {}}));
     REQUIRE(book.volume(price) == 10);
 
     OrderId sell_id = 1;
-    book.add(SellOrder{sell_id, {.price = price, .quantity = 5}, {}});
+    REQUIRE(book.add(SellOrder{sell_id, {.price = price, .quantity = 5}, {}}));
     REQUIRE(book.volume(price) == 5);
-    REQUIRE(book.cancel(sell_id) == false);
+    REQUIRE(!book.cancel(sell_id));
 
-    REQUIRE(book.cancel(buy_id) == true);
+    REQUIRE(book.cancel(buy_id));
     REQUIRE(book.volume(price) == 0);
 }
 
@@ -50,16 +50,16 @@ TEST_CASE("Book spread test", "[lob]") {
 
     REQUIRE(book.spread() == std::make_pair(0, 0));
 
-    book.add(BuyOrder{0, {.price = 100, .quantity = 10}, {}});
+    REQUIRE(book.add(BuyOrder{0, {.price = 100, .quantity = 10}, {}}));
     REQUIRE(book.spread() == std::make_pair(100, 0));
 
-    book.add(SellOrder{1, {.price = 110, .quantity = 10}, {}});
+    REQUIRE(book.add(SellOrder{1, {.price = 110, .quantity = 10}, {}}));
     REQUIRE(book.spread() == std::make_pair(100, 110));
 
-    book.add(BuyOrder{2, {.price = 105, .quantity = 10}, {}});
+    REQUIRE(book.add(BuyOrder{2, {.price = 105, .quantity = 10}, {}}));
     REQUIRE(book.spread() == std::make_pair(105, 110));
 
-    book.add(SellOrder{3, {.price = 108, .quantity = 10}, {}});
+    REQUIRE(book.add(SellOrder{3, {.price = 108, .quantity = 10}, {}}));
     REQUIRE(book.spread() == std::make_pair(105, 108));
 }
 
