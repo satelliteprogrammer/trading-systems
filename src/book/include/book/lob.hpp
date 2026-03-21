@@ -38,13 +38,15 @@ struct SellOrder : Order {};
 
 class Book {
   public:
-    /// Adds buy order to book. If it can be matched, it will be executed immediately.
+    /// Adds buy order to book.
+    ///
     /// time: O(bids.size()) for first order at limit, O(1) for all others
     ///
     /// \return true if order was added to the book
     auto add(BuyOrder) -> std::expected<void, std::string_view>;
 
-    /// Adds sell order to book. If it can be matched, it will be executed immediately.
+    /// Adds sell order to book.
+    ///
     /// time: O(asks.size()) for first order at limit, O(1) for all others
     ///
     /// \return true if order was added to the book
@@ -54,6 +56,28 @@ class Book {
     /// time: amortized O(1)
     /// @warning weak_ptr to the order will remain in the order book until it is cleaned up
     auto cancel(OrderId) -> std::expected<void, std::string_view>;
+
+    /// Cancels shares of order by id.
+    ///
+    /// \return true if order was found and cancelled some or all of the shares.
+    /// \return false if order was not found.
+    auto cancel(OrderId, std::uint64_t) -> std::expected<void, std::string_view>;
+
+    /// Executes buy order against the book.
+    ///
+    /// time: O(asks.orders.size()) in worst case
+    ///
+    /// \return true if order was fully executed.
+    /// \return false if order was not fully executed.
+    auto execute(BuyOrder order) -> std::expected<void, std::string_view>;
+
+    /// Executes sell order against the book.
+    ///
+    /// time: O(bids.orders.size()) in worst case
+    ///
+    /// \return true if order was fully executed.
+    /// \return false if order was not fully executed
+    auto execute(SellOrder order) -> std::expected<void, std::string_view>;
 
     /// Returns total volume at given price level.
     /// time: O(1)
@@ -67,9 +91,6 @@ class Book {
     void reserve(std::size_t n);
 
   private:
-    auto execute(BuyOrder order) -> BuyOrder;
-    auto execute(SellOrder order) -> SellOrder;
-
     struct OrdersAtLimit {
         Limit limit;
         std::uint64_t total_quantity{0};

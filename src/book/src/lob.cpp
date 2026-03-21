@@ -7,10 +7,8 @@
 namespace ome::book {
 
 auto Book::add(BuyOrder order) -> std::expected<void, std::string_view> {
-    order = execute(order);
-
-    if (order.limit.quantity == 0) {
-        return {};
+    if (!asks.empty() && order.limit.price >= asks.begin()->second.limit.price) {
+        return std::unexpected{"order price crosses spread"};
     }
 
     orders[order.order_id] = std::make_shared<Order>(order);
@@ -25,8 +23,8 @@ auto Book::add(BuyOrder order) -> std::expected<void, std::string_view> {
 }
 
 auto Book::add(SellOrder order) -> std::expected<void, std::string_view> {
-    if (order.limit.quantity == 0) {
-        return {};
+    if (!bids.empty() && order.limit.price <= bids.begin()->second.limit.price) {
+        return std::unexpected{"order price crosses spread"};
     }
 
     orders[order.order_id] = std::make_shared<Order>(order);
@@ -48,8 +46,14 @@ auto Book::cancel(OrderId id) -> std::expected<void, std::string_view> {
     auto const &order = orders[id];
     if (auto it = bids.find(order->limit.price); it != bids.end()) {
         it->second.total_quantity -= order->limit.quantity;
+        if (it->second.total_quantity == 0) {
+            bids.erase(it);
+        }
     } else if (auto it = asks.find(order->limit.price); it != asks.end()) {
         it->second.total_quantity -= order->limit.quantity;
+        if (it->second.total_quantity == 0) {
+            asks.erase(it);
+        }
     } else {
         std::unreachable();
     }
@@ -76,10 +80,36 @@ auto Book::volume(Price price) const -> std::expected<std::uint64_t, std::string
     return 0;
 }
 
-auto Book::execute(BuyOrder order) -> BuyOrder {
-    while (order.limit.quantity > 0 && !asks.empty() &&
-           order.limit.price >= asks.begin()->second.limit.price) {
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
+auto Book::cancel(OrderId id, std::uint64_t quantity) -> std::expected<void, std::string_view> {
+    if (!orders.contains(id)) {
+        return std::unexpected{"order not found"};
+    }
 
+    // TODO: order->limit.quantity < quantity check
+
+    auto &order = orders[id];
+    order->limit.quantity -= quantity;
+
+    if (auto it = bids.find(order->limit.price); it != bids.end()) {
+        it->second.total_quantity -= quantity;
+        if (it->second.total_quantity == 0) {
+            bids.erase(it);
+        }
+    } else if (auto it = asks.find(order->limit.price); it != asks.end()) {
+        it->second.total_quantity -= quantity;
+        if (it->second.total_quantity == 0) {
+            asks.erase(it);
+        }
+    } else {
+        std::unreachable();
+    }
+
+    return {};
+}
+
+auto Book::execute(BuyOrder order) -> std::expected<void, std::string_view> {
+    while (order.limit.quantity > 0 && !asks.empty()) {
         auto &ask = std::views::values(asks).front();
         if (ask.orders.empty()) {
             asks.erase(asks.begin());
@@ -102,13 +132,17 @@ auto Book::execute(BuyOrder order) -> BuyOrder {
         }
     }
 
-    return order;
+    if (order.limit.quantity > 0) {
+        return std::unexpected{"order not fully executed"};
+    }
+
+    // remove order from bids map if fully executed
+
+    return {};
 }
 
-auto Book::execute(SellOrder order) -> SellOrder {
-    while (order.limit.quantity > 0 && !bids.empty() &&
-           order.limit.price <= bids.begin()->second.limit.price) {
-
+auto Book::execute(SellOrder order) -> std::expected<void, std::string_view> {
+    while (order.limit.quantity > 0 && !bids.empty()) {
         auto &bid = std::views::values(bids).front();
         if (bid.orders.empty()) {
             bids.erase(bids.begin());
@@ -131,7 +165,13 @@ auto Book::execute(SellOrder order) -> SellOrder {
         }
     }
 
-    return order;
+    if (order.limit.quantity > 0) {
+        return std::unexpected{"order not fully executed"};
+    }
+
+    // remove order from asks map if fully executed
+
+    return {};
 }
 
 auto Book::spread() const -> std::expected<std::pair<Price, Price>, std::string_view> {
