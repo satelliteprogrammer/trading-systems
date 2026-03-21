@@ -62,12 +62,12 @@ auto Book::cancel(OrderId id) -> std::expected<void, std::string_view> {
 }
 
 auto Book::volume(Price price) const -> std::expected<std::uint64_t, std::string_view> {
-    if (price > asks.begin()->first) {
-        if (auto it = bids.find(price); it != bids.end()) {
+    if (!asks.empty() && price >= asks.begin()->first) {
+        if (auto it = asks.find(price); it != asks.end()) {
             return it->second.total_quantity;
         }
     } else {
-        if (auto it = asks.find(price); it != asks.end()) {
+        if (auto it = bids.find(price); it != bids.end()) {
             return it->second.total_quantity;
         }
     }
