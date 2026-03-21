@@ -18,11 +18,16 @@ struct Limit {
 };
 
 using OrderId = std::uint64_t;
+#if __cpp_lib_chrono >= 201907L
+using Timestamp = std::chrono::gps_time<std::chrono::nanoseconds>;
+#else
+using Timestamp = std::chrono::sys_time<std::chrono::nanoseconds>;
+#endif
 
 struct Order {
     OrderId order_id{};
     Limit limit;
-    std::chrono::gps_time<std::chrono::nanoseconds> timestamp;
+    Timestamp timestamp;
     // TODO: timestamp when the order was created
 };
 

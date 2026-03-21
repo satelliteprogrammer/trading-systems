@@ -5,7 +5,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <fstream>
+#ifdef __cpp_lib_generator
 #include <generator>
+#endif
 #include <iostream>
 #include <limits>
 #include <random>
@@ -61,6 +63,7 @@ template <size_t N> auto fibonacci_sequence() {
     return fib;
 }
 
+#if __cpp_lib_generator
 auto fibonacci_generator(std::uint64_t max) -> std::generator<std::uint64_t> {
     std::uint64_t pre = 0;
     std::uint64_t cur = 1;
@@ -71,6 +74,7 @@ auto fibonacci_generator(std::uint64_t max) -> std::generator<std::uint64_t> {
         co_yield next;
     }
 }
+#endif
 
 template <typename T = std::uint64_t> auto random_value() {
     static std::mt19937_64 eng(std::random_device{}());
@@ -79,11 +83,13 @@ template <typename T = std::uint64_t> auto random_value() {
     return distr(eng);
 }
 
+#if __cpp_lib_generator
 template <typename T = std::uint64_t> auto random_generator() -> std::generator<T> {
     while (true) {
         co_yield random_value<T>();
     }
 }
+#endif
 
 } // namespace
 
