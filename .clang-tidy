@@ -25,4 +25,4 @@ CheckOptions:
   readability-identifier-length.MinimumVariableNameLength: 2
   readability-identifier-length.MinimumParameterNameLength: 2
 FormatStyle: file
-HeaderFilterRegex: "src/.*"
+HeaderFilterRegex: "(src|tools)/.*"

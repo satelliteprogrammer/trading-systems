@@ -1,142 +1,394 @@
 #include "book/lob.hpp"
 
-#include <algorithm>
+#include <lobster/reconstructor.hpp>
+
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
+#include <filesystem>
 #include <fstream>
-#ifdef __cpp_lib_generator
-#include <generator>
-#endif
 #include <iostream>
-#include <limits>
-#include <random>
-#include <ratio>
-#include <vector>
+#include <print>
+#include <stdexcept>
+#include <variant>
 
 using namespace std::chrono_literals;
-using namespace ome::book;
 
 namespace chrono = std::chrono;
-namespace ranges = std::ranges;
+namespace fs = std::filesystem;
 
-namespace {
+// helper for std::visit with lambdas
+template <class... Ts> struct overloaded : Ts... {
+    using Ts::operator()...;
+};
 
-// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
-std::uint64_t next_order_id = 1;
+namespace ome::testing {
 
-// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
-auto make_buy(Price price, std::uint64_t qty) -> BuyOrder {
-    BuyOrder order;
-    order.order_id = next_order_id++;
-    order.limit.price = price;
-    order.limit.quantity = qty;
-    return order;
-}
+struct NewOrder {
+    std::variant<book::BuyOrder, book::SellOrder> order;
+};
 
-// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
-auto make_sell(Price price, std::uint64_t qty) -> SellOrder {
-    SellOrder order;
-    order.order_id = next_order_id++;
-    order.limit.price = price;
-    order.limit.quantity = qty;
-    return order;
-}
+struct PartialCancel {
+    book::OrderId order_id{};
+    book::Price price{};
+    std::uint64_t quantity{};
+    book::Timestamp timestamp;
+};
 
-template <size_t N> auto fibonacci_sequence() {
-    std::array<std::uint64_t, N> fib;
+struct Cancel {
+    book::OrderId order_id{};
+    book::Price price{};
+    std::uint64_t quantity{};
+    book::Timestamp timestamp;
+};
 
-    struct Fib {
-        auto operator()() {
-            auto next = pre + cur;
-            pre = cur;
-            cur = next;
-            return next;
+struct Execute {
+    std::variant<book::BuyOrder, book::SellOrder> order;
+    bool hidden{false};
+};
+
+struct Halt {
+    book::Timestamp timestamp;
+};
+
+using Trade = std::variant<NewOrder, PartialCancel, Cancel, Execute, Halt>;
+
+struct ValidationResult {
+    bool valid{true};
+    tools::lobster::Message message;
+    tools::lobster::Direction expected_direction;
+    tools::lobster::Limit expected;
+    tools::lobster::Limit actual;
+};
+
+class Bench {
+  public:
+    Bench(fs::path message_file, fs::path orderbook_file)
+        : message_file_(std::move(message_file)), orderbook_file_(std::move(orderbook_file)) {
+        if (!fs::is_regular_file(message_file_)) {
+            throw std::runtime_error{std::format("{} does not exist", message_file_.string())};
         }
-
-      private:
-        std::uint64_t pre = 0;
-        std::uint64_t cur = 1;
-    };
-
-    ranges::generate(fib, Fib{});
-    return fib;
-}
-
-#if __cpp_lib_generator
-auto fibonacci_generator(std::uint64_t max) -> std::generator<std::uint64_t> {
-    std::uint64_t pre = 0;
-    std::uint64_t cur = 1;
-    while (cur <= max) {
-        auto next = pre + cur;
-        pre = cur;
-        cur = next;
-        co_yield next;
-    }
-}
-#endif
-
-template <typename T = std::uint64_t> auto random_value() {
-    static std::mt19937_64 eng(std::random_device{}());
-    using limits = std::numeric_limits<T>;
-    static std::uniform_int_distribution distr(limits::lowest(), limits::max());
-    return distr(eng);
-}
-
-#if __cpp_lib_generator
-template <typename T = std::uint64_t> auto random_generator() -> std::generator<T> {
-    while (true) {
-        co_yield random_value<T>();
-    }
-}
-#endif
-
-} // namespace
-
-auto main() -> int {
-    std::ofstream csv("results.csv");
-    csv << "op,size,ns_per_op" << '\n';
-
-    constexpr auto NumberOfOps = 100'000;
-
-    auto bench = [](auto const &func, auto const &gen) -> auto {
-        std::vector<chrono::duration<double, std::nano>> deltas;
-        deltas.reserve(NumberOfOps);
-
-        // Book book;
-        for (std::size_t i = 0; i < NumberOfOps; ++i) {
-            auto args = gen();
-            auto start = chrono::high_resolution_clock::now();
-            std::invoke(func, args);
-            auto stop = chrono::high_resolution_clock::now();
-            deltas.emplace_back(stop - start);
-        }
-        return deltas;
-    };
-
-    {
-        Book book;
-        book.reserve(NumberOfOps);
-
-        auto deltas = bench([&](auto price) -> void { book.add(make_buy(price, 1)); },
-                            [price = random_value<Price>()] -> Price { return price; });
-        for (std::size_t n_ops = 0; n_ops < deltas.size(); ++n_ops) {
-            csv << "add_matching," << n_ops + 1 << "," << deltas[n_ops].count() << '\n';
+        if (!fs::is_regular_file(orderbook_file_)) {
+            throw std::runtime_error{std::format("{} does not exist", orderbook_file_.string())};
         }
     }
 
-    {
-        Book book;
-        book.reserve(NumberOfOps);
+    void init() {
+        std::println("Initializing reconstructor with LOBSTER data ...");
+        reconstructor_.emplace(tools::lobster::LobsterData{message_file_, orderbook_file_});
 
-        auto deltas =
-            bench([&](auto price) -> void { book.add(make_sell(price, 1)); }, random_value<Price>);
-        for (std::size_t i = 0; i < deltas.size(); ++i) {
-            csv << "add_nonmatching," << i + 1 << "," << deltas[i].count() << '\n';
-        }
+        std::println("Reconstructor initialized. Loading messages ...");
+
+        messages_ = std::move(*reconstructor_).messages();
+        message_index_ = 0;
+        expected_orderbooks_ = std::move(*reconstructor_).expected_orderbooks();
+        reconstructor_.reset();
+
+        std::println("Messages loaded.");
     }
 
-    csv.close();
-    std::cout << "Bench results written to results.csv\n";
-    return 0;
+    auto next() -> std::optional<Trade> {
+        if (message_index_ >= messages_.size()) {
+            return std::nullopt;
+        }
+        auto msg = messages_[message_index_++];
+        return message_to_trade(msg);
+    }
+
+    auto validate(book::Book const &book) -> ValidationResult {
+        auto previous_message = messages_[message_index_ - 1];
+        auto idx = previous_message.index;
+        if (!idx) {
+            // last message was synthetic, no expected orderbook line to compare against
+            return {.valid = true};
+        }
+
+        for (auto const &expected_bid : expected_orderbooks_[*idx].bids) {
+            if (auto actual_qty = book.volume(expected_bid.price);
+                actual_qty != expected_bid.quantity) {
+                tools::lobster::Limit actual{.price = expected_bid.price,
+                                             .quantity = actual_qty.value()};
+                return {
+                    .valid = false,
+                    .message = previous_message,
+                    .expected_direction = tools::lobster::Direction::BUY,
+                    .expected = expected_bid,
+                    .actual = actual,
+                };
+            }
+        }
+
+        for (auto const &expected_ask : expected_orderbooks_[*idx].asks) {
+            if (auto actual_qty = book.volume(expected_ask.price);
+                actual_qty != expected_ask.quantity) {
+                tools::lobster::Limit actual{.price = expected_ask.price,
+                                             .quantity = actual_qty.value()};
+                return {
+                    .valid = false,
+                    .message = previous_message,
+                    .expected_direction = tools::lobster::Direction::SELL,
+                    .expected = expected_ask,
+                    .actual = actual,
+                };
+            }
+        }
+
+        return {.valid = true};
+    }
+
+    auto operator()(std::size_t id, auto const &func, auto const &...args) -> auto {
+        auto start = chrono::high_resolution_clock::now();
+        auto ans = std::invoke(func, args...);
+        auto stop = chrono::high_resolution_clock::now();
+
+        auto delta = stop - start;
+        std::println(results_, "{},{}", id, delta.count());
+
+        return ans;
+    }
+
+    static auto message_to_trade(tools::lobster::Message const &msg) -> Trade {
+        switch (msg.type) {
+        case tools::lobster::Type::ORDER:
+            switch (msg.direction) {
+            case tools::lobster::Direction::BUY:
+                return NewOrder{book::BuyOrder{{.order_id = msg.order_id,
+                                                .limit = {.price = msg.price, .quantity = msg.size},
+                                                .timestamp = msg.timestamp}}};
+            case tools::lobster::Direction::SELL:
+                return NewOrder{
+                    book::SellOrder{{.order_id = msg.order_id,
+                                     .limit = {.price = msg.price, .quantity = msg.size},
+                                     .timestamp = msg.timestamp}}};
+            default:
+                throw std::runtime_error{
+                    std::format("Unknown direction type: {}", static_cast<int>(msg.direction))};
+            }
+        case tools::lobster::Type::CANCEL:
+            return PartialCancel{.order_id = msg.order_id,
+                                 .price = msg.price,
+                                 .quantity = msg.size,
+                                 .timestamp = msg.timestamp};
+        case tools::lobster::Type::DELETE:
+            return Cancel{.order_id = msg.order_id,
+                          .price = msg.price,
+                          .quantity = msg.size,
+                          .timestamp = msg.timestamp};
+
+        case tools::lobster::Type::EXECUTE:
+            switch (msg.direction) {
+            case tools::lobster::Direction::BUY:
+                return Execute{
+                    .order = book::SellOrder{{.order_id = msg.order_id,
+                                              .limit = {.price = msg.price, .quantity = msg.size},
+                                              .timestamp = msg.timestamp}},
+                    .hidden = false};
+            case tools::lobster::Direction::SELL:
+                return Execute{
+                    .order = book::BuyOrder{{.order_id = msg.order_id,
+                                             .limit = {.price = msg.price, .quantity = msg.size},
+                                             .timestamp = msg.timestamp}},
+                    .hidden = false};
+            default:
+                throw std::runtime_error{
+                    std::format("Unknown direction type: {}", static_cast<int>(msg.direction))};
+            }
+
+        case tools::lobster::Type::EXECUTE_HIDDEN:
+            switch (msg.direction) {
+            case tools::lobster::Direction::BUY:
+                return Execute{
+                    .order = book::BuyOrder{{.order_id = msg.order_id,
+                                             .limit = {.price = msg.price, .quantity = msg.size},
+                                             .timestamp = msg.timestamp}},
+                    .hidden = true};
+            case tools::lobster::Direction::SELL:
+                return Execute{
+                    .order = book::SellOrder{{.order_id = msg.order_id,
+                                              .limit = {.price = msg.price, .quantity = msg.size},
+                                              .timestamp = msg.timestamp}},
+                    .hidden = true};
+            }
+
+        case tools::lobster::Type::HALT:
+            return Halt{.timestamp = msg.timestamp};
+        }
+
+        std::unreachable();
+    }
+
+  private:
+    fs::path orderbook_file_;
+    fs::path message_file_;
+    std::ofstream results_{"results.csv"};
+
+    std::optional<tools::lobster::Reconstructor> reconstructor_;
+    std::vector<tools::lobster::Message> messages_;
+    std::size_t message_index_{0};
+    std::vector<tools::lobster::ExpectedOrderbook> expected_orderbooks_;
+};
+
+} // namespace ome::testing
+
+// NOLINTBEGIN(readability-convert-member-functions-to-static)
+template <> struct std::formatter<ome::testing::NewOrder> {
+    constexpr auto parse(std::format_parse_context &ctx) { return ctx.begin(); }
+
+    auto format(ome::testing::NewOrder const &order, std::format_context &ctx) const {
+        return std::visit(
+            [&ctx](auto const &ord) -> auto {
+                using T = std::decay_t<decltype(ord)>;
+                constexpr auto side = std::is_same_v<T, ome::book::BuyOrder> ? "BUY" : "SELL";
+                return std::format_to(ctx.out(), "NewOrder({} id={} price={} qty={})", side,
+                                      ord.order_id, ord.limit.price, ord.limit.quantity);
+            },
+            order.order);
+    }
+};
+
+template <> struct std::formatter<ome::testing::PartialCancel> {
+    constexpr auto parse(std::format_parse_context &ctx) { return ctx.begin(); }
+
+    auto format(ome::testing::PartialCancel const &cancel, std::format_context &ctx) const {
+        return std::format_to(ctx.out(), "PartialCancel(id={} price={} qty={})", cancel.order_id,
+                              cancel.price, cancel.quantity);
+    }
+};
+
+template <> struct std::formatter<ome::testing::Cancel> {
+    constexpr auto parse(std::format_parse_context &ctx) { return ctx.begin(); }
+
+    auto format(ome::testing::Cancel const &cancel, std::format_context &ctx) const {
+        return std::format_to(ctx.out(), "Cancel(id={} price={} qty={})", cancel.order_id,
+                              cancel.price, cancel.quantity);
+    }
+};
+
+template <> struct std::formatter<ome::testing::Execute> {
+    constexpr auto parse(std::format_parse_context &ctx) { return ctx.begin(); }
+
+    auto format(ome::testing::Execute const &exec, std::format_context &ctx) const {
+        return std::visit(
+            [&ctx, &exec](auto const &ord) -> auto {
+                using T = std::decay_t<decltype(ord)>;
+                constexpr auto side = std::is_same_v<T, ome::book::BuyOrder> ? "BUY" : "SELL";
+                return std::format_to(ctx.out(), "Execute({}{} id={} price={} qty={})",
+                                      exec.hidden ? "HIDDEN " : "", side, ord.order_id,
+                                      ord.limit.price, ord.limit.quantity);
+            },
+            exec.order);
+    }
+};
+
+template <> struct std::formatter<ome::testing::Halt> {
+    constexpr auto parse(std::format_parse_context &ctx) { return ctx.begin(); }
+
+    auto format(ome::testing::Halt const & /*halt*/, std::format_context &ctx) const {
+        return std::format_to(ctx.out(), "Halt");
+    }
+};
+
+template <> struct std::formatter<ome::testing::Trade> {
+    constexpr auto parse(std::format_parse_context &ctx) { return ctx.begin(); }
+
+    auto format(ome::testing::Trade const &trade, std::format_context &ctx) const {
+        return std::visit([&ctx](auto const &val) { return std::format_to(ctx.out(), "{}", val); },
+                          trade);
+    }
+};
+
+template <> struct std::formatter<ome::testing::ValidationResult> {
+    constexpr auto parse(std::format_parse_context &ctx) { return ctx.begin(); }
+
+    auto format(ome::testing::ValidationResult const &result, std::format_context &ctx) const {
+        if (result.valid) {
+            return std::format_to(ctx.out(), "VALID");
+        }
+        return std::format_to(ctx.out(), "FAILED @{} ({}) expected {}, actual {}\nmessage={}",
+                              result.expected.price, result.expected_direction,
+                              result.expected.quantity, result.actual.quantity, result.message);
+    }
+};
+// NOLINTEND(readability-convert-member-functions-to-static)
+
+auto main(int argc, char *argv[]) -> int {
+    using namespace ome::testing;
+
+    if (argc != 3) {
+        std::println(std::cerr, "Usage: {} <messages-file> <orderbook-file>", argv[0]);
+        return EXIT_FAILURE;
+    }
+
+    try {
+        Bench bench(fs::path{argv[1]}, fs::path{argv[2]});
+        bench.init();
+        ome::book::Book book;
+
+        std::size_t trade_id = 0;
+        while (auto trade = bench.next()) {
+            ++trade_id;
+
+            auto success = std::visit(
+                overloaded{
+                    [&](NewOrder const &new_order) -> std::expected<void, std::string_view> {
+                        return std::visit(
+                            [&](auto const &order) -> auto {
+                                return bench(trade->index(),
+                                             [&] -> auto { return book.add(order); });
+                            },
+                            new_order.order);
+                    },
+                    [&](PartialCancel const &partial_cancel)
+                        -> std::expected<void, std::string_view> {
+                        return bench(trade->index(), [&] -> auto {
+                            return book.cancel(partial_cancel.order_id, partial_cancel.quantity);
+                        });
+                    },
+                    [&](Cancel const &cancel) -> std::expected<void, std::string_view> {
+                        return bench(trade->index(),
+                                     [&] -> auto { return book.cancel(cancel.order_id); });
+                    },
+                    [&](Execute const &execute) -> std::expected<void, std::string_view> {
+                        if (execute.hidden) {
+                            // Hidden executions don't affect the visible order book
+                            return {};
+                        }
+                        // LOBSTER EXECUTE messages tell us which resting order was
+                        // executed. Use cancel to reduce that specific order.
+                        return std::visit(
+                            [&](auto const &order) -> auto {
+                                return bench(trade->index(), [&] -> auto {
+                                    return book.cancel(order.order_id, order.limit.quantity);
+                                });
+                            },
+                            execute.order);
+                    },
+                    [&](Halt const &) -> std::expected<void, std::string_view> { return {}; }},
+                *trade);
+
+            if (!success) {
+                // static std::ofstream errors{"errors.log"};
+                // std::println(errors, "{}: {} failed", trade_id, *trade);
+                std::println("{}: error \"{}\", trade={} failed", trade_id, success.error(),
+                             *trade);
+                return EXIT_FAILURE;
+            }
+
+            // Validate book state against expected orderbook
+            auto validation = bench.validate(book);
+            if (!validation.valid) {
+                std::println(std::cerr, "Validation failed at message {}: {}\n{}", trade_id, *trade,
+                             validation);
+                return EXIT_FAILURE;
+            }
+        }
+
+        std::println("All {} messages validated successfully", trade_id);
+    } catch (std::runtime_error &e) {
+        std::println(std::cerr, "{}", e.what());
+        return EXIT_FAILURE;
+    }
+
+    return EXIT_SUCCESS;
 }
