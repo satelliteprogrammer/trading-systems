@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include "limits.h"
 #include "types.h"
-#include "engine.c"
+#include "engine.h"
 
 /* Besides crashing, the only way to sense 
    what is happening internally via the 

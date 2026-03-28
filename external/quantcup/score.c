@@ -3,7 +3,7 @@
 #include <math.h>
 #include "limits.h"
 #include "types.h"
-#include "engine.c"
+#include "engine.h"
 #include "score_feed.h"
 
 void feed(unsigned begin, unsigned end);
