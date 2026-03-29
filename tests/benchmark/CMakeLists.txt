@@ -28,4 +28,4 @@ target_include_directories(quantcup_score PRIVATE ${QUANTCUP})
 target_link_libraries(quantcup_score PRIVATE book m rt)
 # score.c uses sched_getaffinity without including <sched.h>; force-include it.
 target_compile_options(quantcup_score PRIVATE
-  $<$<COMPILE_LANGUAGE:C>:-include sched.h -D_GNU_SOURCE>)
+  $<$<COMPILE_LANGUAGE:C>:-include sched.h -D_GNU_SOURCE -Wno-incompatible-pointer-types>)
