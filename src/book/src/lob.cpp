@@ -1,56 +1,72 @@
 #include "book/lob.hpp"
 
 #include <expected>
-#include <ranges>
+#include <print>
 #include <utility>
 
 namespace ome::book {
 
-auto Book::add(BuyOrder order) -> std::expected<void, std::string_view> {
-    if (!asks.empty() && order.limit.price >= asks.begin()->second.limit.price) {
-        return std::unexpected{"order price crosses spread"};
+auto Book::add(BuyOrder order, bool execute) -> expected<OrdersFilled> {
+    OrderFulfilled order_fulfilled{.unfulfilled_order = order};
+
+    if (!asks.empty() && order.price >= asks.begin()->first) {
+        if (!execute) {
+            return std::unexpected{"order price crosses spread"};
+        }
+        auto res = this->execute(order);
+        if (!res) {
+            return res.transform([](auto &&fulfilled) -> auto { return fulfilled.orders_filled; });
+        }
+        order_fulfilled = std::move(res.value());
     }
 
-    orders[order.order_id] = std::make_shared<Order>(order);
+    if (auto order_ = order_fulfilled.unfulfilled_order) {
+        orders[order_->order_id] = std::make_shared<Order>(*order_);
 
-    if (!bids.contains(order.limit.price)) {
-        bids.emplace(order.limit.price, order.limit);
+        bids[order_->price].orders.emplace_back(orders[order_->order_id]);
+        bids[order_->price].total_quantity += order_->quantity;
     }
-    bids[order.limit.price].orders.emplace_back(orders[order.order_id]);
-    bids[order.limit.price].total_quantity += order.limit.quantity;
 
-    return {};
+    return order_fulfilled.orders_filled;
 }
 
-auto Book::add(SellOrder order) -> std::expected<void, std::string_view> {
-    if (!bids.empty() && order.limit.price <= bids.begin()->second.limit.price) {
-        return std::unexpected{"order price crosses spread"};
+auto Book::add(SellOrder order, bool execute) -> expected<OrdersFilled> {
+    OrderFulfilled order_fulfilled{.unfulfilled_order = order};
+
+    if (!bids.empty() && order.price <= bids.begin()->first) {
+        if (!execute) {
+            return std::unexpected{"order price crosses spread"};
+        }
+        auto res = this->execute(order);
+        if (!res) {
+            return res.transform([](auto &&fulfilled) -> auto { return fulfilled.orders_filled; });
+        }
+        order_fulfilled = std::move(res.value());
     }
 
-    orders[order.order_id] = std::make_shared<Order>(order);
+    if (auto order_ = order_fulfilled.unfulfilled_order) {
+        orders[order_->order_id] = std::make_shared<Order>(*order_);
 
-    if (!asks.contains(order.limit.price)) {
-        asks.emplace(order.limit.price, order.limit);
+        asks[order_->price].orders.emplace_back(orders[order_->order_id]);
+        asks[order_->price].total_quantity += order_->quantity;
     }
-    asks[order.limit.price].orders.emplace_back(orders[order.order_id]);
-    asks[order.limit.price].total_quantity += order.limit.quantity;
 
-    return {};
+    return order_fulfilled.orders_filled;
 }
 
-auto Book::cancel(OrderId id) -> std::expected<void, std::string_view> {
+auto Book::cancel(OrderId id) -> expected<void> {
     if (!orders.contains(id)) {
         return std::unexpected{"order not found"};
     }
 
     auto const &order = orders[id];
-    if (auto it = bids.find(order->limit.price); it != bids.end()) {
-        it->second.total_quantity -= order->limit.quantity;
+    if (auto it = bids.find(order->price); it != bids.end()) {
+        it->second.total_quantity -= order->quantity;
         if (it->second.total_quantity == 0) {
             bids.erase(it);
         }
-    } else if (auto it = asks.find(order->limit.price); it != asks.end()) {
-        it->second.total_quantity -= order->limit.quantity;
+    } else if (auto it = asks.find(order->price); it != asks.end()) {
+        it->second.total_quantity -= order->quantity;
         if (it->second.total_quantity == 0) {
             asks.erase(it);
         }
@@ -65,7 +81,35 @@ auto Book::cancel(OrderId id) -> std::expected<void, std::string_view> {
     return {};
 }
 
-auto Book::volume(Price price) const -> std::expected<std::uint64_t, std::string_view> {
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
+auto Book::cancel(OrderId id, std::uint64_t quantity) -> expected<void> {
+    if (!orders.contains(id)) {
+        return std::unexpected{"order not found"};
+    }
+
+    // TODO: order->quantity < quantity check
+
+    auto &order = orders[id];
+    order->quantity -= quantity;
+
+    if (auto it = bids.find(order->price); it != bids.end()) {
+        it->second.total_quantity -= quantity;
+        if (it->second.total_quantity == 0) {
+            bids.erase(it);
+        }
+    } else if (auto it = asks.find(order->price); it != asks.end()) {
+        it->second.total_quantity -= quantity;
+        if (it->second.total_quantity == 0) {
+            asks.erase(it);
+        }
+    } else {
+        std::unreachable();
+    }
+
+    return {};
+}
+
+auto Book::volume(Price price) const -> expected<std::uint64_t> {
     if (!asks.empty() && price >= asks.begin()->first) {
         if (auto it = asks.find(price); it != asks.end()) {
             return it->second.total_quantity;
@@ -80,101 +124,137 @@ auto Book::volume(Price price) const -> std::expected<std::uint64_t, std::string
     return 0;
 }
 
-// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
-auto Book::cancel(OrderId id, std::uint64_t quantity) -> std::expected<void, std::string_view> {
-    if (!orders.contains(id)) {
-        return std::unexpected{"order not found"};
+auto Book::execute(BuyOrder order, bool execute) -> expected<OrderFulfilled> {
+    if (asks.empty()) {
+        if (!execute) {
+            return std::unexpected{"no asks to execute against"};
+        }
+        return OrderFulfilled{.unfulfilled_order = order};
     }
 
-    // TODO: order->limit.quantity < quantity check
+    OrdersFilled orders_filled;
 
-    auto &order = orders[id];
-    order->limit.quantity -= quantity;
-
-    if (auto it = bids.find(order->limit.price); it != bids.end()) {
-        it->second.total_quantity -= quantity;
-        if (it->second.total_quantity == 0) {
-            bids.erase(it);
-        }
-    } else if (auto it = asks.find(order->limit.price); it != asks.end()) {
-        it->second.total_quantity -= quantity;
-        if (it->second.total_quantity == 0) {
-            asks.erase(it);
-        }
-    } else {
-        std::unreachable();
-    }
-
-    return {};
-}
-
-auto Book::execute(BuyOrder order) -> std::expected<void, std::string_view> {
-    while (order.limit.quantity > 0 && !asks.empty()) {
-        auto &ask = std::views::values(asks).front();
-        if (ask.orders.empty()) {
-            asks.erase(asks.begin());
-            continue;
-        }
-
-        if (auto sp_order = ask.orders.front().lock()) {
-            if (sp_order->limit.quantity > order.limit.quantity) {
-                sp_order->limit.quantity -= order.limit.quantity;
-                ask.total_quantity -= order.limit.quantity;
-                order.limit.quantity = 0;
-            } else {
-                order.limit.quantity -= sp_order->limit.quantity;
-                ask.total_quantity -= sp_order->limit.quantity;
-                ask.orders.pop_front();
+    for (auto it = asks.begin();
+         it != asks.end() && order.price >= it->first && order.quantity > 0;) {
+        for (auto ito = it->second.orders.begin();
+             ito != it->second.orders.end() && order.quantity > 0;) {
+            auto order_ = ito->lock();
+            if (!order_) {
+                // order already removed
+                ito = it->second.orders.erase(ito);
+                continue;
             }
-        } else {
-            // expired order, remove it
-            ask.orders.pop_front();
-        }
-    }
 
-    if (order.limit.quantity > 0) {
-        return std::unexpected{"order not fully executed"};
-    }
+            OrderFilled order_filled{*order_};
 
-    // remove order from bids map if fully executed
+            if (order_->quantity > order.quantity) {
+                order_->quantity -= order.quantity;
+                it->second.total_quantity -= order.quantity;
 
-    return {};
-}
+                order_filled.quantity = order.quantity;
+                order_filled.fully_filled = false;
+                orders_filled.push_back(order_filled);
 
-auto Book::execute(SellOrder order) -> std::expected<void, std::string_view> {
-    while (order.limit.quantity > 0 && !bids.empty()) {
-        auto &bid = std::views::values(bids).front();
-        if (bid.orders.empty()) {
-            bids.erase(bids.begin());
-            continue;
-        }
-
-        if (auto sp_order = bid.orders.front().lock()) {
-            if (sp_order->limit.quantity > order.limit.quantity) {
-                sp_order->limit.quantity -= order.limit.quantity;
-                bid.total_quantity -= order.limit.quantity;
-                order.limit.quantity = 0;
-            } else {
-                order.limit.quantity -= sp_order->limit.quantity;
-                bid.total_quantity -= sp_order->limit.quantity;
-                bid.orders.pop_front();
+                order.quantity = 0;
+                break;
             }
+
+            order.quantity -= order_->quantity;
+            it->second.total_quantity -= order_->quantity;
+
+            order_filled.fully_filled = true;
+            orders_filled.push_back(order_filled);
+
+            if (orders.erase(order_->order_id) == 0U) {
+                std::unreachable();
+            }
+            ito = it->second.orders.erase(ito);
+        }
+
+        if (it->second.orders.empty()) {
+            // all orders consumed at this level, remove it
+            it = asks.erase(it);
         } else {
-            // expired order, remove it
-            bid.orders.pop_front();
+            ++it;
         }
     }
 
-    if (order.limit.quantity > 0) {
-        return std::unexpected{"order not fully executed"};
+    std::optional<Order> unfulfilled_order;
+    if (order.quantity > 0) {
+        if (!execute) {
+            return std::unexpected{"order not fully executed"};
+        }
+        unfulfilled_order.emplace(order);
     }
-
-    // remove order from asks map if fully executed
-
-    return {};
+    return OrderFulfilled{.orders_filled = orders_filled, .unfulfilled_order = unfulfilled_order};
 }
 
-auto Book::spread() const -> std::expected<std::pair<Price, Price>, std::string_view> {
+auto Book::execute(SellOrder order, bool execute) -> expected<OrderFulfilled> {
+    if (bids.empty()) {
+        if (!execute) {
+            return std::unexpected{"no bids to execute against"};
+        }
+        return OrderFulfilled{.unfulfilled_order = order};
+    }
+
+    OrdersFilled orders_filled;
+
+    for (auto it = bids.begin();
+         it != bids.end() && order.price <= it->first && order.quantity > 0;) {
+        for (auto ito = it->second.orders.begin();
+             ito != it->second.orders.end() && order.quantity > 0;) {
+            auto order_ = ito->lock();
+            if (!order_) {
+                // order already removed
+                ito = it->second.orders.erase(ito);
+                continue;
+            }
+
+            OrderFilled order_filled{*order_};
+
+            if (order_->quantity > order.quantity) {
+                order_->quantity -= order.quantity;
+                it->second.total_quantity -= order.quantity;
+
+                order_filled.quantity = order.quantity;
+                order_filled.fully_filled = false;
+                orders_filled.push_back(order_filled);
+
+                order.quantity = 0;
+                break;
+            }
+
+            order.quantity -= order_->quantity;
+            it->second.total_quantity -= order_->quantity;
+
+            order_filled.fully_filled = true;
+            orders_filled.push_back(order_filled);
+
+            if (orders.erase(order_->order_id) == 0U) {
+                std::unreachable();
+            }
+            ito = it->second.orders.erase(ito);
+        }
+
+        if (it->second.orders.empty()) {
+            // all orders consumed at this level, remove it
+            it = bids.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
+    std::optional<Order> unfulfilled_order;
+    if (order.quantity > 0) {
+        if (!execute) {
+            return std::unexpected{"order not fully executed"};
+        }
+        unfulfilled_order.emplace(order);
+    }
+    return OrderFulfilled{.orders_filled = orders_filled, .unfulfilled_order = unfulfilled_order};
+}
+
+auto Book::spread() const -> expected<std::pair<Price, Price>> {
     auto best_bid = bids.empty() ? 0 : bids.begin()->first;
     auto best_ask = asks.empty() ? 0 : asks.begin()->first;
     return std::pair{best_bid, best_ask};

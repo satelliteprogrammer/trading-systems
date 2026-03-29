@@ -153,14 +153,10 @@ class Bench {
         case tools::lobster::Type::ORDER:
             switch (msg.direction) {
             case tools::lobster::Direction::BUY:
-                return NewOrder{book::BuyOrder{{.order_id = msg.order_id,
-                                                .limit = {.price = msg.price, .quantity = msg.size},
-                                                .timestamp = msg.timestamp}}};
+                return NewOrder{book::BuyOrder{{msg.order_id, msg.price, msg.size, msg.timestamp}}};
             case tools::lobster::Direction::SELL:
                 return NewOrder{
-                    book::SellOrder{{.order_id = msg.order_id,
-                                     .limit = {.price = msg.price, .quantity = msg.size},
-                                     .timestamp = msg.timestamp}}};
+                    book::SellOrder{{msg.order_id, msg.price, msg.size, msg.timestamp}}};
             default:
                 throw std::runtime_error{
                     std::format("Unknown direction type: {}", static_cast<int>(msg.direction))};
@@ -180,15 +176,11 @@ class Bench {
             switch (msg.direction) {
             case tools::lobster::Direction::BUY:
                 return Execute{
-                    .order = book::SellOrder{{.order_id = msg.order_id,
-                                              .limit = {.price = msg.price, .quantity = msg.size},
-                                              .timestamp = msg.timestamp}},
+                    .order = book::SellOrder{{msg.order_id, msg.price, msg.size, msg.timestamp}},
                     .hidden = false};
             case tools::lobster::Direction::SELL:
                 return Execute{
-                    .order = book::BuyOrder{{.order_id = msg.order_id,
-                                             .limit = {.price = msg.price, .quantity = msg.size},
-                                             .timestamp = msg.timestamp}},
+                    .order = book::BuyOrder{{msg.order_id, msg.price, msg.size, msg.timestamp}},
                     .hidden = false};
             default:
                 throw std::runtime_error{
@@ -199,15 +191,11 @@ class Bench {
             switch (msg.direction) {
             case tools::lobster::Direction::BUY:
                 return Execute{
-                    .order = book::BuyOrder{{.order_id = msg.order_id,
-                                             .limit = {.price = msg.price, .quantity = msg.size},
-                                             .timestamp = msg.timestamp}},
+                    .order = book::BuyOrder{{msg.order_id, msg.price, msg.size, msg.timestamp}},
                     .hidden = true};
             case tools::lobster::Direction::SELL:
                 return Execute{
-                    .order = book::SellOrder{{.order_id = msg.order_id,
-                                              .limit = {.price = msg.price, .quantity = msg.size},
-                                              .timestamp = msg.timestamp}},
+                    .order = book::SellOrder{{msg.order_id, msg.price, msg.size, msg.timestamp}},
                     .hidden = true};
             }
 
@@ -241,7 +229,7 @@ template <> struct std::formatter<ome::testing::NewOrder> {
                 using T = std::decay_t<decltype(ord)>;
                 constexpr auto side = std::is_same_v<T, ome::book::BuyOrder> ? "BUY" : "SELL";
                 return std::format_to(ctx.out(), "NewOrder({} id={} price={} qty={})", side,
-                                      ord.order_id, ord.limit.price, ord.limit.quantity);
+                                      ord.order_id, ord.price, ord.quantity);
             },
             order.order);
     }
@@ -274,8 +262,8 @@ template <> struct std::formatter<ome::testing::Execute> {
                 using T = std::decay_t<decltype(ord)>;
                 constexpr auto side = std::is_same_v<T, ome::book::BuyOrder> ? "BUY" : "SELL";
                 return std::format_to(ctx.out(), "Execute({}{} id={} price={} qty={})",
-                                      exec.hidden ? "HIDDEN " : "", side, ord.order_id,
-                                      ord.limit.price, ord.limit.quantity);
+                                      exec.hidden ? "HIDDEN " : "", side, ord.order_id, ord.price,
+                                      ord.quantity);
             },
             exec.order);
     }
@@ -333,11 +321,12 @@ auto main(int argc, char *argv[]) -> int {
                 overloaded{
                     [&](NewOrder const &new_order) -> std::expected<void, std::string_view> {
                         return std::visit(
-                            [&](auto const &order) -> auto {
-                                return bench(trade->index(),
-                                             [&] -> auto { return book.add(order); });
-                            },
-                            new_order.order);
+                                   [&](auto const &order) -> auto {
+                                       return bench(trade->index(),
+                                                    [&] -> auto { return book.add(order, false); });
+                                   },
+                                   new_order.order)
+                            .transform([](auto &&) -> auto { return; });
                     },
                     [&](PartialCancel const &partial_cancel)
                         -> std::expected<void, std::string_view> {
@@ -359,7 +348,7 @@ auto main(int argc, char *argv[]) -> int {
                         return std::visit(
                             [&](auto const &order) -> auto {
                                 return bench(trade->index(), [&] -> auto {
-                                    return book.cancel(order.order_id, order.limit.quantity);
+                                    return book.cancel(order.order_id, order.quantity);
                                 });
                             },
                             execute.order);
