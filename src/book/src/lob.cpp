@@ -94,10 +94,12 @@ auto Book::cancel(OrderId id, std::uint64_t quantity) -> expected<void> {
         return std::unexpected{"order not found"};
     }
 
-    // TODO: order->quantity < quantity check
-
     auto const &[price, order_it] = orders[id];
     auto &order = *order_it;
+    if (order.quantity <= quantity) {
+        return cancel(id);
+    }
+
     order.quantity -= quantity;
 
     if (auto it = bids.find(price); it != bids.end()) {
