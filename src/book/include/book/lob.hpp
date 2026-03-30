@@ -32,12 +32,13 @@ struct LimitOrder {
 
 struct Order : LimitOrder {
     Timestamp timestamp;
+    std::string trader_id;
 };
 
 struct BuyOrder : Order {};
 struct SellOrder : Order {};
 
-struct OrderFilled : LimitOrder {
+struct OrderFilled : Order {
     bool fully_filled{};
 };
 
