@@ -6,7 +6,6 @@ extern "C" {
 
 #include <cstring>
 #include <string>
-#include <unordered_map>
 
 using namespace ome::book;
 
@@ -34,16 +33,8 @@ void destroy() {
 auto limit(t_order order) -> t_orderid {
     t_orderid id = next_id++;
     t_size remaining = order.size;
-    t_side maker_side = (order.side == 1) ? 0 : 1;
 
-    OrdersFilled fills;
-    if (is_ask(order.side) != 0) {
-        fills = *book.add(SellOrder{id, order.price, order.size, {}, order.trader});
-    } else {
-        fills = *book.add(BuyOrder{id, order.price, order.size, {}, order.trader});
-    }
-
-    for (auto const &order_ : fills) {
+    auto execute = [&order](Order const &order_) -> void {
         t_execution exec;
         // NOLINTNEXTLINE(bugprone-suspicious-stringview-data-usage)
         std::strncpy(exec.symbol, order.symbol, STRINGLEN);
@@ -54,9 +45,17 @@ auto limit(t_order order) -> t_orderid {
         std::strncpy(exec.trader, order.trader, STRINGLEN);
         execution(exec);
 
-        exec.side = maker_side;
+        exec.side = (order.side == 1) ? 0 : 1;
         std::strncpy(exec.trader, order_.trader_id.data(), STRINGLEN);
         execution(exec);
+    };
+
+    if (is_ask(order.side) != 0) {
+        [[maybe_unused]] auto res =
+            book.add(SellOrder{id, order.price, order.size, {}, order.trader}, true, execute);
+    } else {
+        [[maybe_unused]] auto res =
+            book.add(BuyOrder{id, order.price, order.size, {}, order.trader}, true, execute);
     }
 
     return id;

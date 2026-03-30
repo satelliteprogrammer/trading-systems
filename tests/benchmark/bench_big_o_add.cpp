@@ -321,12 +321,11 @@ auto main(int argc, char *argv[]) -> int {
                 overloaded{
                     [&](NewOrder const &new_order) -> std::expected<void, std::string_view> {
                         return std::visit(
-                                   [&](auto const &order) -> auto {
-                                       return bench(trade->index(),
-                                                    [&] -> auto { return book.add(order, false); });
-                                   },
-                                   new_order.order)
-                            .transform([](auto &&) -> auto { return; });
+                            [&](auto const &order) -> auto {
+                                return bench(trade->index(),
+                                             [&] -> auto { return book.add(order, false); });
+                            },
+                            new_order.order);
                     },
                     [&](PartialCancel const &partial_cancel)
                         -> std::expected<void, std::string_view> {

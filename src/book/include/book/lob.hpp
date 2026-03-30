@@ -58,14 +58,16 @@ class Book {
     /// time: O(bids.size()) for first order at limit, O(1) for all others
     ///
     /// \return true if order was added to the book
-    auto add(BuyOrder, bool execute = true) -> expected<OrdersFilled>;
+    auto add(BuyOrder, bool execute = true, std::function<void(Order)> const &on_fill = {})
+        -> expected<void>;
 
     /// Adds sell order to book.
     ///
     /// time: O(asks.size()) for first order at limit, O(1) for all others
     ///
     /// \return true if order was added to the book
-    auto add(SellOrder, bool execute = true) -> expected<OrdersFilled>;
+    auto add(SellOrder, bool execute = true, std::function<void(Order)> const &on_fill = {})
+        -> expected<void>;
 
     /// Cancels order by id. Returns true if order was found and cancelled.
     /// time: amortized O(1)
@@ -83,14 +85,16 @@ class Book {
     /// time: O(asks.orders.size()) in worst case
     ///
     /// \return list of fills produced (may be empty if no crossing).
-    auto execute(BuyOrder order, bool execute = true) -> expected<OrderFulfilled>;
+    auto execute(BuyOrder order, bool execute = true,
+                 std::function<void(Order)> const &on_fill = {}) -> expected<std::optional<Order>>;
 
     /// Executes sell order against the book up to its limit price.
     ///
     /// time: O(bids.orders.size()) in worst case
     ///
     /// \return list of fills produced (may be empty if no crossing).
-    auto execute(SellOrder order, bool execute = true) -> expected<OrderFulfilled>;
+    auto execute(SellOrder order, bool execute = true,
+                 std::function<void(Order)> const &on_fill = {}) -> expected<std::optional<Order>>;
 
     /// Returns total volume at given price level.
     /// time: O(1)

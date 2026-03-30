@@ -262,6 +262,92 @@ TEST_CASE("Buy exactly matches first ask, second ask at same level survives and 
     REQUIRE(book.volume(100) == 0);
 }
 
+TEST_CASE("on_fill callback: full single fill", "[lob][callback]") {
+    Book book;
+
+    REQUIRE(book.add(SellOrder{{0, 100, 10}}));
+
+    std::vector<Order> fills;
+    REQUIRE(book.add(BuyOrder{{1, 100, 10}}, true,
+                     [&](Order const &order) -> void { fills.push_back(order); }));
+
+    REQUIRE(fills.size() == 1);
+    REQUIRE(fills[0].order_id == 0);
+    REQUIRE(fills[0].price == 100);
+    REQUIRE(fills[0].quantity == 10);
+    REQUIRE(book.volume(100) == 0);
+}
+
+TEST_CASE("on_fill callback: partial fill of resting order", "[lob][callback]") {
+    Book book;
+
+    REQUIRE(book.add(SellOrder{{0, 100, 10}}));
+
+    std::vector<Order> fills;
+    REQUIRE(book.add(BuyOrder{{1, 100, 4}}, true,
+                     [&](Order const &order) -> void { fills.push_back(order); }));
+
+    REQUIRE(fills.size() == 1);
+    REQUIRE(fills[0].order_id == 0);
+    REQUIRE(fills[0].quantity == 4);
+    REQUIRE(book.volume(100) == 6);
+}
+
+TEST_CASE("on_fill callback: multiple resting orders at same price level", "[lob][callback]") {
+    Book book;
+
+    REQUIRE(book.add(SellOrder{{0, 100, 5}}));
+    REQUIRE(book.add(SellOrder{{1, 100, 5}}));
+
+    std::vector<Order> fills;
+    REQUIRE(book.add(BuyOrder{{2, 100, 10}}, true,
+                     [&](Order const &order) -> void { fills.push_back(order); }));
+
+    REQUIRE(fills.size() == 2);
+    REQUIRE(fills[0].order_id == 0);
+    REQUIRE(fills[0].quantity == 5);
+    REQUIRE(fills[1].order_id == 1);
+    REQUIRE(fills[1].quantity == 5);
+    REQUIRE(book.volume(100) == 0);
+}
+
+TEST_CASE("on_fill callback: fills across multiple price levels", "[lob][callback]") {
+    Book book;
+
+    REQUIRE(book.add(SellOrder{{0, 100, 5}}));
+    REQUIRE(book.add(SellOrder{{1, 105, 5}}));
+
+    std::vector<Order> fills;
+    REQUIRE(book.add(BuyOrder{{2, 105, 10}}, true,
+                     [&](Order const &order) -> void { fills.push_back(order); }));
+
+    REQUIRE(fills.size() == 2);
+    REQUIRE(fills[0].order_id == 0);
+    REQUIRE(fills[0].price == 100);
+    REQUIRE(fills[1].order_id == 1);
+    REQUIRE(fills[1].price == 105);
+    REQUIRE(book.volume(100) == 0);
+    REQUIRE(book.volume(105) == 0);
+}
+
+TEST_CASE("on_fill callback: sell side fills", "[lob][callback]") {
+    Book book;
+
+    REQUIRE(book.add(BuyOrder{{0, 100, 5}}));
+    REQUIRE(book.add(BuyOrder{{1, 100, 5}}));
+
+    std::vector<Order> fills;
+    REQUIRE(book.add(SellOrder{{2, 100, 7}}, true,
+                     [&](Order const &order) -> void { fills.push_back(order); }));
+
+    REQUIRE(fills.size() == 2);
+    REQUIRE(fills[0].order_id == 0);
+    REQUIRE(fills[0].quantity == 5);
+    REQUIRE(fills[1].order_id == 1);
+    REQUIRE(fills[1].quantity == 2);
+    REQUIRE(book.volume(100) == 3);
+}
+
 // NOLINTEND(readability-magic-numbers)
 
 } // namespace ome::book
