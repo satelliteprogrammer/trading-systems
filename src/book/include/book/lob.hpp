@@ -106,14 +106,19 @@ class Book {
   private:
     struct OrdersAtLimit {
         // Limit limit;
-        std::list<std::weak_ptr<Order>> orders;
+        std::list<Order> orders;
         std::uint64_t total_quantity{0};
     };
 
     std::map<Price, OrdersAtLimit, std::greater<>> bids;
     std::map<Price, OrdersAtLimit, std::less<>> asks;
 
-    std::unordered_map<OrderId, std::shared_ptr<Order>> orders;
+    struct OrderAtLimit {
+        Price price{};
+        std::list<Order>::iterator order_it;
+    };
+
+    std::unordered_map<OrderId, OrderAtLimit> orders;
 };
 
 } // namespace ome::book

@@ -1,7 +1,7 @@
 #include "book/lob.hpp"
 
+#include <cassert>
 #include <expected>
-#include <print>
 #include <utility>
 
 namespace ome::book {
@@ -21,10 +21,11 @@ auto Book::add(BuyOrder order, bool execute) -> expected<OrdersFilled> {
     }
 
     if (auto order_ = order_fulfilled.unfulfilled_order) {
-        orders[order_->order_id] = std::make_shared<Order>(*order_);
-
-        bids[order_->price].orders.emplace_back(orders[order_->order_id]);
-        bids[order_->price].total_quantity += order_->quantity;
+        auto &bid = bids[order_->price];
+        bid.orders.emplace_back(*order_);
+        bid.total_quantity += order_->quantity;
+        orders[order_->order_id] =
+            OrderAtLimit{.price = order_->price, .order_it = std::prev(bid.orders.end())};
     }
 
     return order_fulfilled.orders_filled;
@@ -45,10 +46,11 @@ auto Book::add(SellOrder order, bool execute) -> expected<OrdersFilled> {
     }
 
     if (auto order_ = order_fulfilled.unfulfilled_order) {
-        orders[order_->order_id] = std::make_shared<Order>(*order_);
-
-        asks[order_->price].orders.emplace_back(orders[order_->order_id]);
-        asks[order_->price].total_quantity += order_->quantity;
+        auto &ask = asks[order_->price];
+        ask.orders.emplace_back(*order_);
+        ask.total_quantity += order_->quantity;
+        orders[order_->order_id] =
+            OrderAtLimit{.price = order_->price, .order_it = std::prev(ask.orders.end())};
     }
 
     return order_fulfilled.orders_filled;
@@ -59,15 +61,20 @@ auto Book::cancel(OrderId id) -> expected<void> {
         return std::unexpected{"order not found"};
     }
 
-    auto const &order = orders[id];
-    if (auto it = bids.find(order->price); it != bids.end()) {
-        it->second.total_quantity -= order->quantity;
+    auto const &[price, order_it] = orders[id];
+    auto const &order = *order_it;
+    if (auto it = bids.find(price); it != bids.end()) {
+        it->second.total_quantity -= order.quantity;
+        it->second.orders.erase(order_it);
         if (it->second.total_quantity == 0) {
+            assert(it->second.orders.empty());
             bids.erase(it);
         }
-    } else if (auto it = asks.find(order->price); it != asks.end()) {
-        it->second.total_quantity -= order->quantity;
+    } else if (auto it = asks.find(price); it != asks.end()) {
+        it->second.total_quantity -= order.quantity;
+        it->second.orders.erase(order_it);
         if (it->second.total_quantity == 0) {
+            assert(it->second.orders.empty());
             asks.erase(it);
         }
     } else {
@@ -89,19 +96,16 @@ auto Book::cancel(OrderId id, std::uint64_t quantity) -> expected<void> {
 
     // TODO: order->quantity < quantity check
 
-    auto &order = orders[id];
-    order->quantity -= quantity;
+    auto const &[price, order_it] = orders[id];
+    auto &order = *order_it;
+    order.quantity -= quantity;
 
-    if (auto it = bids.find(order->price); it != bids.end()) {
+    if (auto it = bids.find(price); it != bids.end()) {
         it->second.total_quantity -= quantity;
-        if (it->second.total_quantity == 0) {
-            bids.erase(it);
-        }
-    } else if (auto it = asks.find(order->price); it != asks.end()) {
+        assert(it->second.total_quantity > 0);
+    } else if (auto it = asks.find(price); it != asks.end()) {
         it->second.total_quantity -= quantity;
-        if (it->second.total_quantity == 0) {
-            asks.erase(it);
-        }
+        assert(it->second.total_quantity > 0);
     } else {
         std::unreachable();
     }
@@ -138,17 +142,11 @@ auto Book::execute(BuyOrder order, bool execute) -> expected<OrderFulfilled> {
          it != asks.end() && order.price >= it->first && order.quantity > 0;) {
         for (auto ito = it->second.orders.begin();
              ito != it->second.orders.end() && order.quantity > 0;) {
-            auto order_ = ito->lock();
-            if (!order_) {
-                // order already removed
-                ito = it->second.orders.erase(ito);
-                continue;
-            }
+            auto &order_ = *ito;
+            OrderFilled order_filled{order_};
 
-            OrderFilled order_filled{*order_};
-
-            if (order_->quantity > order.quantity) {
-                order_->quantity -= order.quantity;
+            if (order_.quantity > order.quantity) {
+                order_.quantity -= order.quantity;
                 it->second.total_quantity -= order.quantity;
 
                 order_filled.quantity = order.quantity;
@@ -159,13 +157,13 @@ auto Book::execute(BuyOrder order, bool execute) -> expected<OrderFulfilled> {
                 break;
             }
 
-            order.quantity -= order_->quantity;
-            it->second.total_quantity -= order_->quantity;
+            order.quantity -= order_.quantity;
+            it->second.total_quantity -= order_.quantity;
 
             order_filled.fully_filled = true;
             orders_filled.push_back(order_filled);
 
-            if (orders.erase(order_->order_id) == 0U) {
+            if (orders.erase(order_.order_id) == 0U) {
                 std::unreachable();
             }
             ito = it->second.orders.erase(ito);
@@ -203,17 +201,11 @@ auto Book::execute(SellOrder order, bool execute) -> expected<OrderFulfilled> {
          it != bids.end() && order.price <= it->first && order.quantity > 0;) {
         for (auto ito = it->second.orders.begin();
              ito != it->second.orders.end() && order.quantity > 0;) {
-            auto order_ = ito->lock();
-            if (!order_) {
-                // order already removed
-                ito = it->second.orders.erase(ito);
-                continue;
-            }
+            auto &order_ = *ito;
+            OrderFilled order_filled{order_};
 
-            OrderFilled order_filled{*order_};
-
-            if (order_->quantity > order.quantity) {
-                order_->quantity -= order.quantity;
+            if (order_.quantity > order.quantity) {
+                order_.quantity -= order.quantity;
                 it->second.total_quantity -= order.quantity;
 
                 order_filled.quantity = order.quantity;
@@ -224,13 +216,13 @@ auto Book::execute(SellOrder order, bool execute) -> expected<OrderFulfilled> {
                 break;
             }
 
-            order.quantity -= order_->quantity;
-            it->second.total_quantity -= order_->quantity;
+            order.quantity -= order_.quantity;
+            it->second.total_quantity -= order_.quantity;
 
             order_filled.fully_filled = true;
             orders_filled.push_back(order_filled);
 
-            if (orders.erase(order_->order_id) == 0U) {
+            if (orders.erase(order_.order_id) == 0U) {
                 std::unreachable();
             }
             ito = it->second.orders.erase(ito);
