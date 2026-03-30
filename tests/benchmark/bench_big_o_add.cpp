@@ -323,7 +323,7 @@ auto main(int argc, char *argv[]) -> int {
                         return std::visit(
                             [&](auto const &order) -> auto {
                                 return bench(trade->index(),
-                                             [&] -> auto { return book.add(order, false); });
+                                             [&] -> auto { return book.add(order); });
                             },
                             new_order.order);
                     },

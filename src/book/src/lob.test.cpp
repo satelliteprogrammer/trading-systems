@@ -268,8 +268,12 @@ TEST_CASE("on_fill callback: full single fill", "[lob][callback]") {
     REQUIRE(book.add(SellOrder{{0, 100, 10}}));
 
     std::vector<Order> fills;
-    REQUIRE(book.add(BuyOrder{{1, 100, 10}}, true,
-                     [&](Order const &order) -> void { fills.push_back(order); }));
+    REQUIRE(
+        book.add(BuyOrder{{1, 100, 10}}, [&](Order const &order, std::uint64_t quantity) -> void {
+            auto fill = order;
+            fill.quantity = quantity;
+            fills.push_back(fill);
+        }));
 
     REQUIRE(fills.size() == 1);
     REQUIRE(fills[0].order_id == 0);
@@ -284,8 +288,12 @@ TEST_CASE("on_fill callback: partial fill of resting order", "[lob][callback]") 
     REQUIRE(book.add(SellOrder{{0, 100, 10}}));
 
     std::vector<Order> fills;
-    REQUIRE(book.add(BuyOrder{{1, 100, 4}}, true,
-                     [&](Order const &order) -> void { fills.push_back(order); }));
+    REQUIRE(
+        book.add(BuyOrder{{1, 100, 4}}, [&](Order const &order, std::uint64_t quantity) -> void {
+            auto fill = order;
+            fill.quantity = quantity;
+            fills.push_back(fill);
+        }));
 
     REQUIRE(fills.size() == 1);
     REQUIRE(fills[0].order_id == 0);
@@ -300,8 +308,12 @@ TEST_CASE("on_fill callback: multiple resting orders at same price level", "[lob
     REQUIRE(book.add(SellOrder{{1, 100, 5}}));
 
     std::vector<Order> fills;
-    REQUIRE(book.add(BuyOrder{{2, 100, 10}}, true,
-                     [&](Order const &order) -> void { fills.push_back(order); }));
+    REQUIRE(
+        book.add(BuyOrder{{2, 100, 10}}, [&](Order const &order, std::uint64_t quantity) -> void {
+            auto fill = order;
+            fill.quantity = quantity;
+            fills.push_back(fill);
+        }));
 
     REQUIRE(fills.size() == 2);
     REQUIRE(fills[0].order_id == 0);
@@ -318,8 +330,12 @@ TEST_CASE("on_fill callback: fills across multiple price levels", "[lob][callbac
     REQUIRE(book.add(SellOrder{{1, 105, 5}}));
 
     std::vector<Order> fills;
-    REQUIRE(book.add(BuyOrder{{2, 105, 10}}, true,
-                     [&](Order const &order) -> void { fills.push_back(order); }));
+    REQUIRE(
+        book.add(BuyOrder{{2, 105, 10}}, [&](Order const &order, std::uint64_t quantity) -> void {
+            auto fill = order;
+            fill.quantity = quantity;
+            fills.push_back(fill);
+        }));
 
     REQUIRE(fills.size() == 2);
     REQUIRE(fills[0].order_id == 0);
@@ -337,8 +353,12 @@ TEST_CASE("on_fill callback: sell side fills", "[lob][callback]") {
     REQUIRE(book.add(BuyOrder{{1, 100, 5}}));
 
     std::vector<Order> fills;
-    REQUIRE(book.add(SellOrder{{2, 100, 7}}, true,
-                     [&](Order const &order) -> void { fills.push_back(order); }));
+    REQUIRE(
+        book.add(SellOrder{{2, 100, 7}}, [&](Order const &order, std::uint64_t quantity) -> void {
+            auto fill = order;
+            fill.quantity = quantity;
+            fills.push_back(fill);
+        }));
 
     REQUIRE(fills.size() == 2);
     REQUIRE(fills[0].order_id == 0);

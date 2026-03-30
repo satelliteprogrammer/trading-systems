@@ -12,16 +12,17 @@ All results were run 10+ times on an AMD Ryzen 7 1700 @ 3.20GHz, and the lowest 
 
 ### Results
 
-| Engine                                    | mean latency (ns) | sd latency (ns) | score   |
-| ----------------------------------------- | ----------------- | --------------- | ------- |
-| original                                  | 4496.15           | 4614.44         | 4555.29 |
-| original (split TU)                       | 4576.89           | 4620.20         | 4598.54 |
-| voyager                                   | 150.33            | 294.01          | 222.17  |
-| voyager (split TU)                        | 242.49            | 400.88          | 321.69  |
-| lob                                       | 1233.51           | 1169.34         | 1201.43 |
-| lob (order it)                            | 1074.79           | 1020.15         | 1047.47 |
-| lob ([execute inplace](#execute-inplace)) | 708.34            | 703.31          | 705.82  |
-| lob (1x unordered_map.find)               | 701.19            | 708.26          | 704.73  |
+| Engine                                        | mean latency (ns) | sd latency (ns) | score   |
+| --------------------------------------------- | ----------------- | --------------- | ------- |
+| original                                      | 4496.15           | 4614.44         | 4555.29 |
+| original (split TU)                           | 4576.89           | 4620.20         | 4598.54 |
+| voyager                                       | 150.33            | 294.01          | 222.17  |
+| voyager (split TU)                            | 242.49            | 400.88          | 321.69  |
+| lob                                           | 1233.51           | 1169.34         | 1201.43 |
+| lob (order it)                                | 1074.79           | 1020.15         | 1047.47 |
+| lob ([execute inplace](#execute-inplace))     | 708.34            | 703.31          | 705.82  |
+| lob (1x unordered_map.find)                   | 701.19            | 708.26          | 704.73  |
+| lob ([refactored execute](#execute-refactor)) | 569.41            | 597.25          | 583.33  |
 
 #### Execute inplace
 
@@ -37,3 +38,12 @@ The previous flamegraphs show the pre and post call graphs and were generated fr
 sudo perf record -ag -F 99 build/tests/benchmark/quantcup_score
 sudo perf script report flamegraph
 ```
+
+#### Execute refactor
+
+Correcting an earlier missunderstanding that the execute method had to be public allows for deep refactoring of the method.
+
+The largest improvement is seen in the reduction of copies of Order.
+
+![LOB pre execute refactor](benchmarks-lob-pre-exec-refactor.png)
+![LOB post execute refact](benchmarks-lob-post-exec-refactor.png)
