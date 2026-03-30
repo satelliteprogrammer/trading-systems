@@ -18,5 +18,5 @@ All results were run 10+ times on an AMD Ryzen 7 1700 @ 3.20GHz, and the lowest 
 | original (split TU) | 4576.89           | 4620.20         | 4598.54 |
 | voyager             | 150.33            | 294.01          | 222.17  |
 | voyager (split TU)  | 242.49            | 400.88          | 321.69  |
-| lob                 | 1302.51           | 1167.55         | 1235.03 |
-| lob (order it)      | 1150.91           | 1052.61         | 1101.76 |
+| lob                 | 1233.51           | 1169.34         | 1201.43 |
+| lob (order it)      | 1074.79           | 1020.15         | 1047.47 |
