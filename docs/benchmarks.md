@@ -21,6 +21,7 @@ All results were run 10+ times on an AMD Ryzen 7 1700 @ 3.20GHz, and the lowest 
 | lob                                       | 1233.51           | 1169.34         | 1201.43 |
 | lob (order it)                            | 1074.79           | 1020.15         | 1047.47 |
 | lob ([execute inplace](#execute-inplace)) | 708.34            | 703.31          | 705.82  |
+| lob (1x unordered_map.find)               | 701.19            | 708.26          | 704.73  |
 
 #### Execute inplace
 

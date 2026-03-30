@@ -59,11 +59,12 @@ auto Book::add(SellOrder order, bool execute, std::function<void(Order)> const &
 }
 
 auto Book::cancel(OrderId id) -> expected<void> {
-    if (!orders.contains(id)) {
+    auto orders_it = orders.find(id);
+    if (orders_it == orders.end()) {
         return std::unexpected{"order not found"};
     }
 
-    auto const &[price, order_it] = orders[id];
+    auto const &[price, order_it] = orders_it->second;
     auto const &order = *order_it;
     if (auto it = bids.find(price); it != bids.end()) {
         it->second.total_quantity -= order.quantity;
@@ -92,11 +93,12 @@ auto Book::cancel(OrderId id) -> expected<void> {
 
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 auto Book::cancel(OrderId id, std::uint64_t quantity) -> expected<void> {
-    if (!orders.contains(id)) {
+    auto orders_it = orders.find(id);
+    if (orders_it == orders.end()) {
         return std::unexpected{"order not found"};
     }
 
-    auto const &[price, order_it] = orders[id];
+    auto const &[price, order_it] = orders_it->second;
     auto &order = *order_it;
     if (order.quantity <= quantity) {
         return cancel(id);
