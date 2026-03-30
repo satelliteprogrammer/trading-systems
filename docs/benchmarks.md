@@ -41,7 +41,7 @@ sudo perf script report flamegraph
 
 #### Execute refactor
 
-Correcting an earlier missunderstanding that the execute method had to be public allows for deep refactoring of the method.
+Correcting an earlier missunderstanding that `execute` had to be publicly available (it doesn't) allows for deep refactoring of the method.
 
 The largest improvement is seen in the reduction of copies of Order.
 
