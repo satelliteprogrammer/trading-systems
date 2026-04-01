@@ -8,21 +8,25 @@ Retrived from https://web.archive.org/web/20120110103600/http://www.quantcup.org
 The engines were compiled with GCC 15.2.1, and require -fpermissive.
 The test and score were changed to include the engine header instead of the source code directly, to simplify testing different implementations.
 
-All results were run 10+ times on an AMD Ryzen 7 1700 @ 3.20GHz, and the lowest (read best) results were added to the table below.
+All implementations were run multiple times on an AMD Ryzen 7 1700 @ 3.20GHz with core pinning, and the best results were added to the table below.
 
 ### Results
 
 | Engine                                        | mean latency (ns) | sd latency (ns) | score   |
 | --------------------------------------------- | ----------------- | --------------- | ------- |
-| original                                      | 4496.15           | 4614.44         | 4555.29 |
-| original (split TU)                           | 4576.89           | 4620.20         | 4598.54 |
-| voyager                                       | 150.33            | 294.01          | 222.17  |
-| voyager (split TU)                            | 242.49            | 400.88          | 321.69  |
-| lob                                           | 1233.51           | 1169.34         | 1201.43 |
-| lob (order it)                                | 1074.79           | 1020.15         | 1047.47 |
-| lob ([execute inplace](#execute-inplace))     | 708.34            | 703.31          | 705.82  |
-| lob (1x unordered_map.find)                   | 701.19            | 708.26          | 704.73  |
-| lob ([refactored execute](#execute-refactor)) | 569.41            | 597.25          | 583.33  |
+| original                                      | 4489.10           | 4557.60         | 4523.35 |
+| original (split TU)                           | 4557.60           | 4561.30         | 4562.64 |
+| voyager                                       | 150.15            | 301.78          | 225.97  |
+| voyager (split TU)                            | 240.56            | 374.68          | 307.62  |
+| lob                                           | 1258.71           | 1121.97         | 1190.34 |
+| lob ([iterator to list](#iterator-to-list))   | 1070.75           | 962.89          | 1016.82 |
+| lob ([execute inplace](#execute-inplace))     | 704.82            | 692.53          | 698.67  |
+| lob (1x unordered_map.find)                   | 697.86            | 697.05          | 697.46  |
+| lob ([refactored execute](#execute-refactor)) | 568.85            | 617.14          | 592.99  |
+
+#### Iterator to list
+
+TODO
 
 #### Execute inplace
 
