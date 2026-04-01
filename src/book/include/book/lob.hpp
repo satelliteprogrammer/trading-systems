@@ -7,10 +7,8 @@
 #include <functional>
 #include <list>
 #include <map>
-#include <optional>
 #include <string_view>
 #include <unordered_map>
-#include <vector>
 
 // TODO: research alignment and packing
 namespace ome::book {
@@ -37,17 +35,6 @@ struct Order : LimitOrder {
 
 struct BuyOrder : Order {};
 struct SellOrder : Order {};
-
-struct OrderFilled : Order {
-    bool fully_filled{};
-};
-
-using OrdersFilled = std::vector<OrderFilled>;
-
-struct OrderFulfilled {
-    OrdersFilled orders_filled;
-    std::optional<Order> unfulfilled_order;
-};
 
 template <typename T> using expected = std::expected<T, std::string_view>;
 
@@ -146,14 +133,5 @@ template <> struct std::formatter<ome::book::SellOrder> : std::formatter<std::st
     auto format(ome::book::SellOrder const &order, FormatContext &ctx) const {
         return std::format_to(ctx.out(), "SELL {}",
                               std::format("{}", static_cast<const ome::book::LimitOrder &>(order)));
-    }
-};
-
-template <> struct std::formatter<ome::book::OrderFilled> : std::formatter<std::string_view> {
-    template <typename FormatContext>
-    auto format(ome::book::OrderFilled const &order, FormatContext &ctx) const {
-        return std::format_to(ctx.out(), "{} fully_filled={}",
-                              std::format("{}", static_cast<const ome::book::LimitOrder &>(order)),
-                              order.fully_filled);
     }
 };
