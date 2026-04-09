@@ -5,7 +5,6 @@ extern "C" {
 }
 
 #include <cstring>
-#include <string>
 
 using namespace ome::book;
 
@@ -51,11 +50,11 @@ auto limit(t_order order) -> t_orderid {
     };
 
     if (is_ask(order.side) != 0) {
-        [[maybe_unused]] auto res =
-            book.add(SellOrder{id, order.price, order.size, {}, order.trader}, execute);
+        SellOrder sell{id, order.price, order.size, {}, std::to_array(order.trader)};
+        [[maybe_unused]] auto res = book.add(sell, execute);
     } else {
-        [[maybe_unused]] auto res =
-            book.add(BuyOrder{id, order.price, order.size, {}, order.trader}, execute);
+        BuyOrder buy{id, order.price, order.size, {}, std::to_array(order.trader)};
+        [[maybe_unused]] auto res = book.add(buy, execute);
     }
 
     return id;

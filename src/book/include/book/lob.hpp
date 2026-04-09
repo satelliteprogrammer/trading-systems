@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <chrono>
 #include <cstdint>
 #include <expected>
@@ -30,7 +31,7 @@ struct LimitOrder {
 
 struct Order : LimitOrder {
     Timestamp timestamp;
-    std::string trader_id;
+    std::array<char, 5> trader_id{}; // NOLINT(readability-magic-numbers)
 };
 
 struct BuyOrder : Order {};

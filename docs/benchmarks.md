@@ -23,6 +23,7 @@ All implementations were run multiple times on an AMD Ryzen 7 1700 @ 3.20GHz wit
 | lob ([execute inplace](#execute-inplace))     | 704.82            | 692.53          | 698.67  |
 | lob (1x unordered_map.find)                   | 697.86            | 697.05          | 697.46  |
 | lob ([refactored execute](#execute-refactor)) | 568.85            | 617.14          | 592.99  |
+| lob (std::string to std::array<char>)         | 529.44            | 593.08          | 561.26  |
 
 #### Iterator to list
 

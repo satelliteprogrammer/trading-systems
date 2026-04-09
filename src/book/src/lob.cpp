@@ -14,7 +14,7 @@ auto Book::add(BuyOrder order, std::function<void(Order const &, std::uint64_t)>
         auto price = order.price;
         auto &bid = bids[price];
         bid.total_quantity += order.quantity;
-        bid.orders.emplace_back(std::move(order));
+        bid.orders.emplace_back(order);
         orders[order.order_id] =
             OrderAtLimit{.price = price, .order_it = std::prev(bid.orders.end())};
     }
@@ -30,7 +30,7 @@ auto Book::add(SellOrder order, std::function<void(Order const &, std::uint64_t)
         auto price = order.price;
         auto &ask = asks[price];
         ask.total_quantity += order.quantity;
-        ask.orders.emplace_back(std::move(order));
+        ask.orders.emplace_back(order);
         orders[order.order_id] =
             OrderAtLimit{.price = price, .order_it = std::prev(ask.orders.end())};
     }
