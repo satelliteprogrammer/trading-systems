@@ -25,7 +25,6 @@ using Timestamp = std::chrono::sys_time<std::chrono::nanoseconds>;
 
 struct LimitOrder {
     OrderId order_id{};
-    Price price{};
     std::uint64_t quantity{};
 };
 
@@ -34,8 +33,12 @@ struct Order : LimitOrder {
     std::array<char, 5> trader_id{}; // NOLINT(readability-magic-numbers)
 };
 
-struct BuyOrder : Order {};
-struct SellOrder : Order {};
+struct BuyOrder : Order {
+    Price price{};
+};
+struct SellOrder : Order {
+    Price price{};
+};
 
 template <typename T> using expected = std::expected<T, std::string_view>;
 
@@ -46,7 +49,7 @@ class Book {
     /// time: O(bids.size()) for first order at limit, O(1) for all others
     ///
     /// \return true if order was added to the book
-    auto add(BuyOrder, std::function<void(Order const &, std::uint64_t)> const &on_fill = {})
+    auto add(BuyOrder, std::function<void(Order const &, Price, std::uint64_t)> const &on_fill = {})
         -> expected<void>;
 
     /// Adds sell order to book.
@@ -54,7 +57,8 @@ class Book {
     /// time: O(asks.size()) for first order at limit, O(1) for all others
     ///
     /// \return true if order was added to the book
-    auto add(SellOrder, std::function<void(Order const &, std::uint64_t)> const &on_fill = {})
+    auto add(SellOrder,
+             std::function<void(Order const &, Price, std::uint64_t)> const &on_fill = {})
         -> expected<void>;
 
     /// Cancels order by id. Returns true if order was found and cancelled.
@@ -81,9 +85,9 @@ class Book {
 
   private:
     void execute(BuyOrder &order,
-                 std::function<void(Order const &, std::uint64_t)> const &on_fill = {});
+                 std::function<void(Order const &, Price, std::uint64_t)> const &on_fill = {});
     void execute(SellOrder &order,
-                 std::function<void(Order const &, std::uint64_t)> const &on_fill = {});
+                 std::function<void(Order const &, Price, std::uint64_t)> const &on_fill = {});
 
     struct OrdersAtLimit {
         // Limit limit;
@@ -107,8 +111,7 @@ class Book {
 template <> struct std::formatter<ome::book::LimitOrder> : std::formatter<std::string_view> {
     template <typename FormatContext>
     auto format(ome::book::LimitOrder const &order, FormatContext &ctx) const {
-        return std::format_to(ctx.out(), "id={} price={} qty={}", order.order_id, order.price,
-                              order.quantity);
+        return std::format_to(ctx.out(), "id={} qty={}", order.order_id, order.quantity);
     }
 };
 
@@ -124,15 +127,17 @@ template <> struct std::formatter<ome::book::Order> : std::formatter<std::string
 template <> struct std::formatter<ome::book::BuyOrder> : std::formatter<std::string_view> {
     template <typename FormatContext>
     auto format(ome::book::BuyOrder const &order, FormatContext &ctx) const {
-        return std::format_to(ctx.out(), "BUY {}",
-                              std::format("{}", static_cast<const ome::book::LimitOrder &>(order)));
+        return std::format_to(ctx.out(), "BUY {} price={}",
+                              std::format("{}", static_cast<const ome::book::LimitOrder &>(order)),
+                              order.price);
     }
 };
 
 template <> struct std::formatter<ome::book::SellOrder> : std::formatter<std::string_view> {
     template <typename FormatContext>
     auto format(ome::book::SellOrder const &order, FormatContext &ctx) const {
-        return std::format_to(ctx.out(), "SELL {}",
-                              std::format("{}", static_cast<const ome::book::LimitOrder &>(order)));
+        return std::format_to(ctx.out(), "SELL {} price={}",
+                              std::format("{}", static_cast<const ome::book::LimitOrder &>(order)),
+                              order.price);
     }
 };

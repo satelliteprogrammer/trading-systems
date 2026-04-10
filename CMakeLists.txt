@@ -5,6 +5,7 @@ project(
   LANGUAGES CXX C)
 
 set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 
 option(BUILD_TESTING "Build the testing tree." ON)
 

@@ -33,11 +33,11 @@ auto limit(t_order order) -> t_orderid {
     t_orderid id = next_id++;
     t_size remaining = order.size;
 
-    auto execute = [&order](Order const &order_, std::uint64_t quantity) -> void {
+    auto execute = [&order](Order const &order_, Price price, std::uint64_t quantity) -> void {
         t_execution exec;
         // NOLINTNEXTLINE(bugprone-suspicious-stringview-data-usage)
         std::strncpy(exec.symbol, order.symbol, STRINGLEN);
-        exec.price = order_.price;
+        exec.price = price;
         exec.size = quantity;
 
         exec.side = order.side;
@@ -50,10 +50,10 @@ auto limit(t_order order) -> t_orderid {
     };
 
     if (is_ask(order.side) != 0) {
-        SellOrder sell{id, order.price, order.size, {}, std::to_array(order.trader)};
+        SellOrder sell{id, order.size, {}, std::to_array(order.trader), order.price};
         [[maybe_unused]] auto res = book.add(sell, execute);
     } else {
-        BuyOrder buy{id, order.price, order.size, {}, std::to_array(order.trader)};
+        BuyOrder buy{id, order.size, {}, std::to_array(order.trader), order.price};
         [[maybe_unused]] auto res = book.add(buy, execute);
     }
 

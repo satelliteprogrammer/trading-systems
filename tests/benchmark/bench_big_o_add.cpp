@@ -153,10 +153,10 @@ class Bench {
         case tools::lobster::Type::ORDER:
             switch (msg.direction) {
             case tools::lobster::Direction::BUY:
-                return NewOrder{book::BuyOrder{{msg.order_id, msg.price, msg.size, msg.timestamp}}};
+                return NewOrder{book::BuyOrder{{msg.order_id, msg.size, msg.timestamp}, msg.price}};
             case tools::lobster::Direction::SELL:
                 return NewOrder{
-                    book::SellOrder{{msg.order_id, msg.price, msg.size, msg.timestamp}}};
+                    book::SellOrder{{msg.order_id, msg.size, msg.timestamp}, msg.price}};
             default:
                 throw std::runtime_error{
                     std::format("Unknown direction type: {}", static_cast<int>(msg.direction))};
@@ -176,11 +176,11 @@ class Bench {
             switch (msg.direction) {
             case tools::lobster::Direction::BUY:
                 return Execute{
-                    .order = book::SellOrder{{msg.order_id, msg.price, msg.size, msg.timestamp}},
+                    .order = book::SellOrder{{msg.order_id, msg.size, msg.timestamp}, msg.price},
                     .hidden = false};
             case tools::lobster::Direction::SELL:
                 return Execute{
-                    .order = book::BuyOrder{{msg.order_id, msg.price, msg.size, msg.timestamp}},
+                    .order = book::BuyOrder{{msg.order_id, msg.size, msg.timestamp}, msg.price},
                     .hidden = false};
             default:
                 throw std::runtime_error{
@@ -191,11 +191,11 @@ class Bench {
             switch (msg.direction) {
             case tools::lobster::Direction::BUY:
                 return Execute{
-                    .order = book::BuyOrder{{msg.order_id, msg.price, msg.size, msg.timestamp}},
+                    .order = book::BuyOrder{{msg.order_id, msg.size, msg.timestamp}, msg.price},
                     .hidden = true};
             case tools::lobster::Direction::SELL:
                 return Execute{
-                    .order = book::SellOrder{{msg.order_id, msg.price, msg.size, msg.timestamp}},
+                    .order = book::SellOrder{{msg.order_id, msg.size, msg.timestamp}, msg.price},
                     .hidden = true};
             }
 
