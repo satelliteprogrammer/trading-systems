@@ -11,7 +11,7 @@ add_executable(quantcup_test
   ${QUANTCUP}/test.c
   quantcup_engine.cpp
 )
-target_compile_features(quantcup_test PRIVATE cxx_std_23)
+target_compile_features(quantcup_test PRIVATE cxx_std_26)
 target_include_directories(quantcup_test PRIVATE ${QUANTCUP})
 target_link_libraries(quantcup_test PRIVATE book)
 # test.c calls test()/test_cancel() before they are declared; silence the
@@ -23,7 +23,7 @@ add_executable(quantcup_score
   ${QUANTCUP}/score.c
   quantcup_engine.cpp
 )
-target_compile_features(quantcup_score PRIVATE cxx_std_23)
+target_compile_features(quantcup_score PRIVATE cxx_std_26)
 target_include_directories(quantcup_score PRIVATE ${QUANTCUP})
 target_link_libraries(quantcup_score PRIVATE book m rt)
 # score.c uses sched_getaffinity without including <sched.h>; force-include it.

@@ -6,9 +6,7 @@
 
 namespace ome::book {
 
-auto Book::add(BuyOrder order,
-               std::function<void(Order const &, Price, std::uint64_t)> const &on_fill)
-    -> expected<void> {
+auto Book::add(BuyOrder order, OrderCallback on_fill) -> expected<void> {
 
     execute(order, on_fill);
     if (order.quantity > 0) {
@@ -23,9 +21,7 @@ auto Book::add(BuyOrder order,
     return {};
 }
 
-auto Book::add(SellOrder order,
-               std::function<void(Order const &, Price, std::uint64_t)> const &on_fill)
-    -> expected<void> {
+auto Book::add(SellOrder order, OrderCallback on_fill) -> expected<void> {
 
     execute(order, on_fill);
     if (order.quantity > 0) {
@@ -124,16 +120,13 @@ auto Book::spread() const -> expected<std::pair<Price, Price>> {
 
 void Book::reserve(std::size_t n) { orders.reserve(n); }
 
-void Book::execute(BuyOrder &order,
-                   std::function<void(Order const &, Price, std::uint64_t)> const &on_fill) {
+void Book::execute(BuyOrder &order, OrderCallback on_fill) {
     for (auto it = asks.begin();
          it != asks.end() && order.price >= it->first && order.quantity > 0;) {
         for (auto it_order = it->second.orders.begin();
              it_order != it->second.orders.end() && order.quantity > 0;) {
 
-            if (on_fill) {
-                on_fill(*it_order, it->first, std::min(order.quantity, it_order->quantity));
-            }
+            on_fill(*it_order, it->first, std::min(order.quantity, it_order->quantity));
 
             if (it_order->quantity > order.quantity) {
                 it_order->quantity -= order.quantity;
@@ -161,16 +154,13 @@ void Book::execute(BuyOrder &order,
     }
 }
 
-void Book::execute(SellOrder &order,
-                   std::function<void(Order const &, Price, std::uint64_t)> const &on_fill) {
+void Book::execute(SellOrder &order, OrderCallback on_fill) {
     for (auto it = bids.begin();
          it != bids.end() && order.price <= it->first && order.quantity > 0;) {
         for (auto it_order = it->second.orders.begin();
              it_order != it->second.orders.end() && order.quantity > 0;) {
 
-            if (on_fill) {
-                on_fill(*it_order, it->first, std::min(order.quantity, it_order->quantity));
-            }
+            on_fill(*it_order, it->first, std::min(order.quantity, it_order->quantity));
 
             if (it_order->quantity > order.quantity) {
                 it_order->quantity -= order.quantity;
