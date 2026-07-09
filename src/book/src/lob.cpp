@@ -37,12 +37,13 @@ auto Book::add(SellOrder order, OrderCallback on_fill) -> expected<void> {
 }
 
 auto Book::cancel(OrderId id) -> expected<void> {
-    auto orders_it = orders.find(id);
-    if (orders_it == orders.end()) {
+    assert(id < orders.size());
+
+    auto &[price, order_it] = orders[id];
+    if (order_it == std::list<Order>::iterator{}) {
         return std::unexpected{"order not found"};
     }
 
-    auto const &[price, order_it] = orders_it->second;
     auto const &order = *order_it;
     if (auto it = bids.find(price); it != bids.end()) {
         it->second.total_quantity -= order.quantity;
@@ -62,21 +63,20 @@ auto Book::cancel(OrderId id) -> expected<void> {
         std::unreachable();
     }
 
-    if (orders.erase(id) == 0U) {
-        std::unreachable();
-    }
+    order_it = std::list<Order>::iterator{};
 
     return {};
 }
 
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 auto Book::cancel(OrderId id, std::uint64_t quantity) -> expected<void> {
-    auto orders_it = orders.find(id);
-    if (orders_it == orders.end()) {
+    assert(id < orders.size());
+
+    auto &[price, order_it] = orders[id];
+    if (order_it == std::list<Order>::iterator{}) {
         return std::unexpected{"order not found"};
     }
 
-    auto const &[price, order_it] = orders_it->second;
     auto &order = *order_it;
     if (order.quantity <= quantity) {
         return cancel(id);
@@ -118,7 +118,7 @@ auto Book::spread() const -> expected<std::pair<Price, Price>> {
     return std::pair{best_bid, best_ask};
 }
 
-void Book::reserve(std::size_t n) { orders.reserve(n); }
+void Book::reserve(std::size_t n) { orders.resize(n); }
 
 void Book::execute(BuyOrder &order, OrderCallback on_fill) {
     for (auto it = asks.begin();
@@ -139,9 +139,7 @@ void Book::execute(BuyOrder &order, OrderCallback on_fill) {
             order.quantity -= it_order->quantity;
             it->second.total_quantity -= it_order->quantity;
 
-            if (orders.erase(it_order->order_id) == 0U) {
-                std::unreachable();
-            }
+            orders[it_order->order_id].order_it = std::list<Order>::iterator{};
             it_order = it->second.orders.erase(it_order);
         }
 
@@ -173,9 +171,7 @@ void Book::execute(SellOrder &order, OrderCallback on_fill) {
             order.quantity -= it_order->quantity;
             it->second.total_quantity -= it_order->quantity;
 
-            if (orders.erase(it_order->order_id) == 0U) {
-                std::unreachable();
-            }
+            orders[it_order->order_id].order_it = std::list<Order>::iterator{};
             it_order = it->second.orders.erase(it_order);
         }
 

@@ -10,6 +10,7 @@
 #include <map>
 #include <string_view>
 #include <unordered_map>
+#include <vector>
 
 // TODO: research alignment and packing
 namespace ome::book {
@@ -101,7 +102,7 @@ class Book {
         std::list<Order>::iterator order_it;
     };
 
-    std::unordered_map<OrderId, OrderAtLimit> orders;
+    std::vector<OrderAtLimit> orders; // arena, index is order_id
 };
 
 } // namespace ome::book
