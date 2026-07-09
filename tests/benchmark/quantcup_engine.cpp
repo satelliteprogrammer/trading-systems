@@ -58,9 +58,7 @@ auto limit(t_order order) -> t_orderid {
     return id;
 }
 
-void cancel(t_orderid orderid) {
-    book.cancel(orderid); // NOLINT(bugprone-unused-return-value)
-}
+void cancel(t_orderid orderid) { [[maybe_unused]] auto res = book.cancel(orderid); }
 
 // NOLINTEND(cppcoreguidelines-pro-bounds-array-to-pointer-decay)
 // NOLINTEND(cppcoreguidelines-avoid-non-const-global-variables)
