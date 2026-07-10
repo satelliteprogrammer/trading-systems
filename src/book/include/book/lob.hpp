@@ -25,7 +25,6 @@ using Timestamp = std::chrono::sys_time<std::chrono::nanoseconds>;
 #endif
 
 struct LimitOrder {
-    OrderId order_id{};
     std::uint64_t quantity{};
 };
 
@@ -45,22 +44,32 @@ template <typename T> using expected = std::expected<T, std::string_view>;
 
 class Book {
   public:
-    using OrderCallback = std::function_ref<void(Order const &, Price, std::uint64_t)>;
-    static constexpr auto default_callback = [](Order const &, Price, std::uint64_t) -> void {};
+    /// Called once per fill with the id of the resting order, the resting order itself,
+    /// the execution price and the executed quantity.
+    using OrderCallback = std::function_ref<void(OrderId, Order const &, Price, std::uint64_t)>;
+    static constexpr auto default_callback = [](OrderId, Order const &, Price,
+                                                std::uint64_t) -> void {};
+
+    static constexpr std::size_t default_max_orders = 1'000'000;
+
+    /// \param max_orders bounds the total number of orders added over the book's lifetime,
+    /// not just concurrently live ones: ids are assigned sequentially, never reused, and
+    /// index directly into a preallocated arena.
+    explicit Book(std::size_t max_orders = default_max_orders);
 
     /// Adds buy order to book.
     ///
     /// time: O(bids.size()) for first order at limit, O(1) for all others
     ///
-    /// \return true if order was added to the book
-    auto add(BuyOrder, OrderCallback on_fill = default_callback) -> expected<void>;
+    /// \return id assigned to the order (sequential, starting at 0)
+    auto add(BuyOrder, OrderCallback on_fill = default_callback) -> expected<OrderId>;
 
     /// Adds sell order to book.
     ///
     /// time: O(asks.size()) for first order at limit, O(1) for all others
     ///
-    /// \return true if order was added to the book
-    auto add(SellOrder, OrderCallback on_fill = default_callback) -> expected<void>;
+    /// \return id assigned to the order (sequential, starting at 0)
+    auto add(SellOrder, OrderCallback on_fill = default_callback) -> expected<OrderId>;
 
     /// Cancels order by id. Returns true if order was found and cancelled.
     /// time: amortized O(1)
@@ -81,16 +90,18 @@ class Book {
     /// time: O(1)
     auto spread() const -> expected<std::pair<Price, Price>>;
 
-    /// Reserves space for n orders to avoid rehashing.
-    void reserve(std::size_t n);
-
   private:
     void execute(BuyOrder &order, OrderCallback on_fill);
     void execute(SellOrder &order, OrderCallback on_fill);
 
+    /// Order resting on the book, tagged with its book-assigned id.
+    struct RestingOrder : Order {
+        OrderId order_id{};
+    };
+
     struct OrdersAtLimit {
         // Limit limit;
-        std::list<Order> orders;
+        std::list<RestingOrder> orders;
         std::uint64_t total_quantity{0};
     };
 
@@ -99,10 +110,12 @@ class Book {
 
     struct OrderAtLimit {
         Price price{};
-        std::list<Order>::iterator order_it;
+        std::list<RestingOrder>::iterator order_it;
     };
 
     std::vector<OrderAtLimit> orders; // arena, index is order_id
+
+    OrderId next_id{0};
 };
 
 } // namespace ome::book
@@ -110,7 +123,7 @@ class Book {
 template <> struct std::formatter<ome::book::LimitOrder> : std::formatter<std::string_view> {
     template <typename FormatContext>
     auto format(ome::book::LimitOrder const &order, FormatContext &ctx) const {
-        return std::format_to(ctx.out(), "id={} qty={}", order.order_id, order.quantity);
+        return std::format_to(ctx.out(), "qty={}", order.quantity);
     }
 };
 

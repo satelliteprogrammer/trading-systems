@@ -11,6 +11,7 @@
 #include <iostream>
 #include <print>
 #include <stdexcept>
+#include <unordered_map>
 #include <variant>
 
 using namespace std::chrono_literals;
@@ -26,6 +27,7 @@ template <class... Ts> struct overloaded : Ts... {
 namespace ome::testing {
 
 struct NewOrder {
+    book::OrderId order_id{}; // external (exchange-assigned) id
     std::variant<book::BuyOrder, book::SellOrder> order;
 };
 
@@ -44,6 +46,7 @@ struct Cancel {
 };
 
 struct Execute {
+    book::OrderId order_id{}; // external (exchange-assigned) id
     std::variant<book::BuyOrder, book::SellOrder> order;
     bool hidden{false};
 };
@@ -153,10 +156,11 @@ class Bench {
         case tools::lobster::Type::ORDER:
             switch (msg.direction) {
             case tools::lobster::Direction::BUY:
-                return NewOrder{book::BuyOrder{{msg.order_id, msg.size, msg.timestamp}, msg.price}};
+                return NewOrder{.order_id = msg.order_id,
+                                .order = book::BuyOrder{{msg.size, msg.timestamp}, msg.price}};
             case tools::lobster::Direction::SELL:
-                return NewOrder{
-                    book::SellOrder{{msg.order_id, msg.size, msg.timestamp}, msg.price}};
+                return NewOrder{.order_id = msg.order_id,
+                                .order = book::SellOrder{{msg.size, msg.timestamp}, msg.price}};
             default:
                 throw std::runtime_error{
                     std::format("Unknown direction type: {}", static_cast<int>(msg.direction))};
@@ -175,13 +179,13 @@ class Bench {
         case tools::lobster::Type::EXECUTE:
             switch (msg.direction) {
             case tools::lobster::Direction::BUY:
-                return Execute{
-                    .order = book::SellOrder{{msg.order_id, msg.size, msg.timestamp}, msg.price},
-                    .hidden = false};
+                return Execute{.order_id = msg.order_id,
+                               .order = book::SellOrder{{msg.size, msg.timestamp}, msg.price},
+                               .hidden = false};
             case tools::lobster::Direction::SELL:
-                return Execute{
-                    .order = book::BuyOrder{{msg.order_id, msg.size, msg.timestamp}, msg.price},
-                    .hidden = false};
+                return Execute{.order_id = msg.order_id,
+                               .order = book::BuyOrder{{msg.size, msg.timestamp}, msg.price},
+                               .hidden = false};
             default:
                 throw std::runtime_error{
                     std::format("Unknown direction type: {}", static_cast<int>(msg.direction))};
@@ -190,13 +194,13 @@ class Bench {
         case tools::lobster::Type::EXECUTE_HIDDEN:
             switch (msg.direction) {
             case tools::lobster::Direction::BUY:
-                return Execute{
-                    .order = book::BuyOrder{{msg.order_id, msg.size, msg.timestamp}, msg.price},
-                    .hidden = true};
+                return Execute{.order_id = msg.order_id,
+                               .order = book::BuyOrder{{msg.size, msg.timestamp}, msg.price},
+                               .hidden = true};
             case tools::lobster::Direction::SELL:
-                return Execute{
-                    .order = book::SellOrder{{msg.order_id, msg.size, msg.timestamp}, msg.price},
-                    .hidden = true};
+                return Execute{.order_id = msg.order_id,
+                               .order = book::SellOrder{{msg.size, msg.timestamp}, msg.price},
+                               .hidden = true};
             }
 
         case tools::lobster::Type::HALT:
@@ -225,11 +229,11 @@ template <> struct std::formatter<ome::testing::NewOrder> {
 
     auto format(ome::testing::NewOrder const &order, std::format_context &ctx) const {
         return std::visit(
-            [&ctx](auto const &ord) -> auto {
+            [&ctx, &order](auto const &ord) -> auto {
                 using T = std::decay_t<decltype(ord)>;
                 constexpr auto side = std::is_same_v<T, ome::book::BuyOrder> ? "BUY" : "SELL";
                 return std::format_to(ctx.out(), "NewOrder({} id={} price={} qty={})", side,
-                                      ord.order_id, ord.price, ord.quantity);
+                                      order.order_id, ord.price, ord.quantity);
             },
             order.order);
     }
@@ -262,7 +266,7 @@ template <> struct std::formatter<ome::testing::Execute> {
                 using T = std::decay_t<decltype(ord)>;
                 constexpr auto side = std::is_same_v<T, ome::book::BuyOrder> ? "BUY" : "SELL";
                 return std::format_to(ctx.out(), "Execute({}{} id={} price={} qty={})",
-                                      exec.hidden ? "HIDDEN " : "", side, ord.order_id, ord.price,
+                                      exec.hidden ? "HIDDEN " : "", side, exec.order_id, ord.price,
                                       ord.quantity);
             },
             exec.order);
@@ -313,6 +317,21 @@ auto main(int argc, char *argv[]) -> int {
         bench.init();
         ome::book::Book book;
 
+        // LOBSTER ids are sparse exchange-assigned reference numbers; the book assigns its
+        // own dense ids. Translate at the boundary. Lookups happen outside the timed calls
+        // so only book operations are measured.
+        std::unordered_map<ome::book::OrderId, ome::book::OrderId> id_map;
+        id_map.reserve(ome::book::Book::default_max_orders);
+
+        auto book_id = [&](ome::book::OrderId external_id)
+            -> std::expected<ome::book::OrderId, std::string_view> {
+            auto it = id_map.find(external_id);
+            if (it == id_map.end()) {
+                return std::unexpected{"unknown order id"};
+            }
+            return it->second;
+        };
+
         std::size_t trade_id = 0;
         while (auto trade = bench.next()) {
             ++trade_id;
@@ -321,21 +340,29 @@ auto main(int argc, char *argv[]) -> int {
                 overloaded{
                     [&](NewOrder const &new_order) -> std::expected<void, std::string_view> {
                         return std::visit(
-                            [&](auto const &order) -> auto {
-                                return bench(trade->index(),
-                                             [&] -> auto { return book.add(order); });
+                            [&](auto const &order) -> std::expected<void, std::string_view> {
+                                auto id =
+                                    bench(trade->index(), [&] -> auto { return book.add(order); });
+                                if (!id) {
+                                    return std::unexpected{id.error()};
+                                }
+                                id_map[new_order.order_id] = *id;
+                                return {};
                             },
                             new_order.order);
                     },
                     [&](PartialCancel const &partial_cancel)
                         -> std::expected<void, std::string_view> {
-                        return bench(trade->index(), [&] -> auto {
-                            return book.cancel(partial_cancel.order_id, partial_cancel.quantity);
+                        return book_id(partial_cancel.order_id).and_then([&](auto id) -> auto {
+                            return bench(trade->index(), [&] -> auto {
+                                return book.cancel(id, partial_cancel.quantity);
+                            });
                         });
                     },
                     [&](Cancel const &cancel) -> std::expected<void, std::string_view> {
-                        return bench(trade->index(),
-                                     [&] -> auto { return book.cancel(cancel.order_id); });
+                        return book_id(cancel.order_id).and_then([&](auto id) -> auto {
+                            return bench(trade->index(), [&] -> auto { return book.cancel(id); });
+                        });
                     },
                     [&](Execute const &execute) -> std::expected<void, std::string_view> {
                         if (execute.hidden) {
@@ -345,9 +372,11 @@ auto main(int argc, char *argv[]) -> int {
                         // LOBSTER EXECUTE messages tell us which resting order was
                         // executed. Use cancel to reduce that specific order.
                         return std::visit(
-                            [&](auto const &order) -> auto {
-                                return bench(trade->index(), [&] -> auto {
-                                    return book.cancel(order.order_id, order.quantity);
+                            [&](auto const &order) -> std::expected<void, std::string_view> {
+                                return book_id(execute.order_id).and_then([&](auto id) -> auto {
+                                    return bench(trade->index(), [&] -> auto {
+                                        return book.cancel(id, order.quantity);
+                                    });
                                 });
                             },
                             execute.order);

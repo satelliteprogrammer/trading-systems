@@ -6,41 +6,45 @@
 
 namespace ome::book {
 
-auto Book::add(BuyOrder order, OrderCallback on_fill) -> expected<void> {
+Book::Book(std::size_t max_orders) : orders{max_orders} {}
+
+auto Book::add(BuyOrder order, OrderCallback on_fill) -> expected<OrderId> {
+    auto const id = next_id++;
+    assert(id < orders.size());
 
     execute(order, on_fill);
     if (order.quantity > 0) {
         auto price = order.price;
         auto &bid = bids[price];
         bid.total_quantity += order.quantity;
-        bid.orders.emplace_back(order);
-        orders[order.order_id] =
-            OrderAtLimit{.price = price, .order_it = std::prev(bid.orders.end())};
+        bid.orders.emplace_back(order, id);
+        orders[id] = OrderAtLimit{.price = price, .order_it = std::prev(bid.orders.end())};
     }
 
-    return {};
+    return id;
 }
 
-auto Book::add(SellOrder order, OrderCallback on_fill) -> expected<void> {
+auto Book::add(SellOrder order, OrderCallback on_fill) -> expected<OrderId> {
+    auto const id = next_id++;
+    assert(id < orders.size());
 
     execute(order, on_fill);
     if (order.quantity > 0) {
         auto price = order.price;
         auto &ask = asks[price];
         ask.total_quantity += order.quantity;
-        ask.orders.emplace_back(order);
-        orders[order.order_id] =
-            OrderAtLimit{.price = price, .order_it = std::prev(ask.orders.end())};
+        ask.orders.emplace_back(order, id);
+        orders[id] = OrderAtLimit{.price = price, .order_it = std::prev(ask.orders.end())};
     }
 
-    return {};
+    return id;
 }
 
 auto Book::cancel(OrderId id) -> expected<void> {
     assert(id < orders.size());
 
     auto &[price, order_it] = orders[id];
-    if (order_it == std::list<Order>::iterator{}) {
+    if (order_it == std::list<RestingOrder>::iterator{}) {
         return std::unexpected{"order not found"};
     }
 
@@ -63,7 +67,7 @@ auto Book::cancel(OrderId id) -> expected<void> {
         std::unreachable();
     }
 
-    order_it = std::list<Order>::iterator{};
+    order_it = std::list<RestingOrder>::iterator{};
 
     return {};
 }
@@ -73,7 +77,7 @@ auto Book::cancel(OrderId id, std::uint64_t quantity) -> expected<void> {
     assert(id < orders.size());
 
     auto &[price, order_it] = orders[id];
-    if (order_it == std::list<Order>::iterator{}) {
+    if (order_it == std::list<RestingOrder>::iterator{}) {
         return std::unexpected{"order not found"};
     }
 
@@ -118,15 +122,14 @@ auto Book::spread() const -> expected<std::pair<Price, Price>> {
     return std::pair{best_bid, best_ask};
 }
 
-void Book::reserve(std::size_t n) { orders.resize(n); }
-
 void Book::execute(BuyOrder &order, OrderCallback on_fill) {
     for (auto it = asks.begin();
          it != asks.end() && order.price >= it->first && order.quantity > 0;) {
         for (auto it_order = it->second.orders.begin();
              it_order != it->second.orders.end() && order.quantity > 0;) {
 
-            on_fill(*it_order, it->first, std::min(order.quantity, it_order->quantity));
+            on_fill(it_order->order_id, *it_order, it->first,
+                    std::min(order.quantity, it_order->quantity));
 
             if (it_order->quantity > order.quantity) {
                 it_order->quantity -= order.quantity;
@@ -139,7 +142,7 @@ void Book::execute(BuyOrder &order, OrderCallback on_fill) {
             order.quantity -= it_order->quantity;
             it->second.total_quantity -= it_order->quantity;
 
-            orders[it_order->order_id].order_it = std::list<Order>::iterator{};
+            orders[it_order->order_id].order_it = std::list<RestingOrder>::iterator{};
             it_order = it->second.orders.erase(it_order);
         }
 
@@ -158,7 +161,8 @@ void Book::execute(SellOrder &order, OrderCallback on_fill) {
         for (auto it_order = it->second.orders.begin();
              it_order != it->second.orders.end() && order.quantity > 0;) {
 
-            on_fill(*it_order, it->first, std::min(order.quantity, it_order->quantity));
+            on_fill(it_order->order_id, *it_order, it->first,
+                    std::min(order.quantity, it_order->quantity));
 
             if (it_order->quantity > order.quantity) {
                 it_order->quantity -= order.quantity;
@@ -171,7 +175,7 @@ void Book::execute(SellOrder &order, OrderCallback on_fill) {
             order.quantity -= it_order->quantity;
             it->second.total_quantity -= it_order->quantity;
 
-            orders[it_order->order_id].order_it = std::list<Order>::iterator{};
+            orders[it_order->order_id].order_it = std::list<RestingOrder>::iterator{};
             it_order = it->second.orders.erase(it_order);
         }
 
