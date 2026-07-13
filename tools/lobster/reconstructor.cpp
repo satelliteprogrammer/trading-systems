@@ -1,5 +1,6 @@
 #include "lobster/reconstructor.hpp"
 
+#include "algorithm.hpp"
 #include "parser.hpp"
 
 #include <algorithm>
@@ -9,7 +10,6 @@
 #include <fstream>
 #include <print>
 #include <ranges>
-#include <unordered_map>
 
 using namespace std::literals::chrono_literals;
 namespace ranges = std::ranges;
@@ -145,18 +145,14 @@ auto Reconstructor::orphans() const -> Orphans {
         }
     }
 
-    auto map_to_vector = [](auto &&map) -> std::vector<Message> {
-        std::vector<Message> result;
-        result.reserve(map.size());
-        for (auto &&orphan : map | std::views::values) {
-            result.emplace_back(std::forward<Message>(orphan));
-        }
+    auto by_timestamp = [](auto &&map) -> std::vector<Message> {
+        auto result = algorithm::map_to<std::vector>(std::forward<decltype(map)>(map));
         ranges::sort(result, {}, &Message::timestamp);
         return result;
     };
-    return {.only_referenced = map_to_vector(std::move(orphans)),
-            .only_created = map_to_vector(std::move(alive)),
-            .partially_deleted = map_to_vector(std::move(partially_deleted))};
+    return {.only_referenced = by_timestamp(std::move(orphans)),
+            .only_created = by_timestamp(std::move(alive)),
+            .partially_deleted = by_timestamp(std::move(partially_deleted))};
 }
 
 auto Reconstructor::levels() const -> std::map<Price, std::vector<PriceView>> {
@@ -289,18 +285,12 @@ auto Reconstructor::synthetics() const -> std::vector<Message> {
     std::println("Retrieving orphan messages...");
     auto orphans = this->orphans();
 
-    std::unordered_map<Price, std::vector<Message>> only_referenced_map;
-    std::unordered_map<Price, std::vector<Message>> only_created_map;
-    std::unordered_map<Price, std::vector<Message>> partially_deleted_map;
-    for (auto &&orphan : std::move(orphans.only_referenced)) {
-        only_referenced_map[orphan.price].emplace_back(std::forward<Message>(orphan));
-    }
-    for (auto &&orphan : std::move(orphans.only_created)) {
-        only_created_map[orphan.price].emplace_back(std::forward<Message>(orphan));
-    }
-    for (auto &&orphan : std::move(orphans.partially_deleted)) {
-        partially_deleted_map[orphan.price].emplace_back(std::forward<Message>(orphan));
-    }
+    auto only_referenced_map =
+        algorithm::vector_to_map(std::move(orphans.only_referenced), &Message::price);
+    auto only_created_map =
+        algorithm::vector_to_map(std::move(orphans.only_created), &Message::price);
+    auto partially_deleted_map =
+        algorithm::vector_to_map(std::move(orphans.partially_deleted), &Message::price);
 
     std::println("Collecting orderbook levels...");
     auto levels = this->levels();

@@ -21,6 +21,7 @@ Checks:
   - portability-*
   - readability-*
 CheckOptions:
+  modernize-use-trailing-return-type.TransformLambdas: "all_except_auto"
   readability-identifier-length.IgnoredVariableNames: "_"
   readability-identifier-length.MinimumVariableNameLength: 2
   readability-identifier-length.MinimumParameterNameLength: 2
