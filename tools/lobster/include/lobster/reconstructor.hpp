@@ -80,6 +80,9 @@ class LobsterData {
 struct Orphans {
     std::vector<Message> only_referenced;
     std::vector<Message> only_created;
+    // created and later deleted, but the recorded reductions don't add up to the
+    // created size: the difference was cancelled while the level was hidden
+    std::vector<Message> partially_deleted;
 };
 
 constexpr auto LobsterDay = std::chrono::year{2012} / 6 / 21;
@@ -112,8 +115,9 @@ class Reconstructor {
     [[nodiscard]] auto initial_orderbook() const -> ExpectedOrderbook;
     [[nodiscard]] auto synthetics() const -> std::vector<Message>;
     [[nodiscard]] auto next_order_id(MessageLine) const -> OrderId;
-    static auto synthetic(Message const &orphan,
-                          Timestamp dt = std::chrono::clock_cast<Clock>(MarketOpen)) -> Message;
+
+    static auto make_order(Message const &, Timestamp) -> Message;
+    static auto make_cancel(Message const &, Timestamp, Size) -> Message;
 
     std::filesystem::path p_messages_;
     std::filesystem::path p_orderbook_;

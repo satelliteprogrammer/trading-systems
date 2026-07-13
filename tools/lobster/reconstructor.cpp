@@ -131,6 +131,20 @@ auto Reconstructor::orphans() const -> Orphans {
         }
     }
 
+    std::map<OrderId, Message> partially_deleted;
+    for (auto const &[order_id, msgs] : deleted) {
+        auto it = created_ids.find(order_id);
+        if (it == created_ids.end()) {
+            continue;
+        }
+        auto reduced = ranges::fold_left(msgs, Size{0}, sum_size);
+        if (it->second.size > reduced) {
+            auto residual = it->second;
+            residual.size -= reduced;
+            partially_deleted.emplace(order_id, residual);
+        }
+    }
+
     auto map_to_vector = [](auto &&map) -> std::vector<Message> {
         std::vector<Message> result;
         result.reserve(map.size());
@@ -141,7 +155,8 @@ auto Reconstructor::orphans() const -> Orphans {
         return result;
     };
     return {.only_referenced = map_to_vector(std::move(orphans)),
-            .only_created = map_to_vector(std::move(alive))};
+            .only_created = map_to_vector(std::move(alive)),
+            .partially_deleted = map_to_vector(std::move(partially_deleted))};
 }
 
 auto Reconstructor::levels() const -> std::map<Price, std::vector<PriceView>> {
@@ -173,8 +188,10 @@ auto Reconstructor::levels() const -> std::map<Price, std::vector<PriceView>> {
         // add new levels, update exit volume
         for (auto const &level : level_views) {
             if (!levels.contains(level.price)) {
+                // 1st iteration is opening the book (0), but references the initial orderbook (1)
+                auto line_ = line != 0 ? line : 1;
                 PriceView initial{.entry = {
-                                      .line = line,
+                                      .line = line_,
                                       .timestamp = message.timestamp,
                                       .size = level.quantity,
                                       .direction = direction(level.price),
@@ -207,6 +224,14 @@ auto Reconstructor::levels() const -> std::map<Price, std::vector<PriceView>> {
                     views.back().exit.direction = direction(price);
                 }
             }
+        }
+    }
+
+    // close views still open when the data ends
+    for (auto &views : levels | views::values) {
+        if (views.back().exit.timestamp == std::chrono::clock_cast<Clock>(MarketClose)) {
+            views.back().exit.line = messages_.size();
+            views.back().exit.timestamp = messages_.back().timestamp;
         }
     }
 
@@ -266,11 +291,15 @@ auto Reconstructor::synthetics() const -> std::vector<Message> {
 
     std::unordered_map<Price, std::vector<Message>> only_referenced_map;
     std::unordered_map<Price, std::vector<Message>> only_created_map;
+    std::unordered_map<Price, std::vector<Message>> partially_deleted_map;
     for (auto &&orphan : std::move(orphans.only_referenced)) {
         only_referenced_map[orphan.price].emplace_back(std::forward<Message>(orphan));
     }
     for (auto &&orphan : std::move(orphans.only_created)) {
         only_created_map[orphan.price].emplace_back(std::forward<Message>(orphan));
+    }
+    for (auto &&orphan : std::move(orphans.partially_deleted)) {
+        partially_deleted_map[orphan.price].emplace_back(std::forward<Message>(orphan));
     }
 
     std::println("Collecting orderbook levels...");
@@ -278,9 +307,9 @@ auto Reconstructor::synthetics() const -> std::vector<Message> {
 
     std::println("Generating missing messages...");
     std::vector<Message> synthetics;
-    // OrderId synthetic_id = std::numeric_limits<OrderId>::max();
     auto const synthetic_id_start = this->next_order_id(messages_.size());
-    OrderId synthetic_id = synthetic_id_start; // TODO: don't clash w/ existing order IDs.
+    OrderId synthetic_id = synthetic_id_start;
+    auto const first_order_id = this->next_order_id(1);
 
     for (auto [price, views] : levels) {
         assert(!views.empty());
@@ -297,6 +326,8 @@ auto Reconstructor::synthetics() const -> std::vector<Message> {
         auto only_referenced = node ? std::move(node.mapped()) : std::vector<Message>{};
         node = only_created_map.extract(price);
         auto only_created = node ? std::move(node.mapped()) : std::vector<Message>{};
+        node = partially_deleted_map.extract(price);
+        auto partially_deleted = node ? std::move(node.mapped()) : std::vector<Message>{};
 
         std::vector<Message> orphans_consumed; // debug only
 
@@ -349,15 +380,34 @@ auto Reconstructor::synthetics() const -> std::vector<Message> {
 
         for (auto const &[first, second] : views | std::views::adjacent<2>) {
             // generate all orphans that belong in this view interval
+
             PriceView hidden{.entry = first.exit, .exit = second.entry};
-            auto order_ids{
-                std::pair{next_order_id(hidden.entry.line), next_order_id(hidden.exit.line)}};
-            auto volume = static_cast<std::int64_t>(hidden.exit.size) -
-                          static_cast<std::int64_t>(hidden.entry.size);
+            struct {
+                OrderId entry;
+                OrderId exit;
+            } order_ids{
+                .entry = next_order_id(hidden.entry.line),
+                .exit = next_order_id(hidden.exit.line),
+            };
+            auto volume = static_cast<std::int64_t>(hidden.exit.size - hidden.entry.size);
 
             std::vector<Message> orphans_in_view;
             for (auto it = only_referenced.begin(); it != only_referenced.end();) {
-                if (it->order_id < order_ids.second) {
+                bool in_view{false};
+
+                // while order IDs are monotonically increasing, there are instances where orders
+                // with IDs pre-market open are referenced out-of-order early in the replay sequence
+                // capture these when they are in the second view
+                if (it->order_id < first_order_id) {
+                    if (*it->index + 1 >= second.entry.line && *it->index + 1 <= second.exit.line) {
+                        std::println("Found orphan referenced out-of-order: {}", *it);
+                        in_view = true;
+                    }
+                } else if (it->order_id >= order_ids.entry && it->order_id < order_ids.exit) {
+                    in_view = true;
+                }
+
+                if (in_view) {
                     orphans_in_view.emplace_back(*it);
                     orphans_consumed.emplace_back(*it);
                     it = only_referenced.erase(it);
@@ -368,8 +418,19 @@ auto Reconstructor::synthetics() const -> std::vector<Message> {
             ranges::sort(orphans_in_view, {}, &Message::order_id);
 
             for (auto &&orphan : orphans_in_view) {
-                synthetics.push_back(Reconstructor::synthetic(orphan, hidden.entry.timestamp));
+                synthetics.push_back(Reconstructor::make_order(orphan, hidden.entry.timestamp));
                 volume -= static_cast<std::int64_t>(orphan.size);
+            }
+
+            for (auto it = partially_deleted.begin(); it != partially_deleted.end();) {
+                if (it->order_id < order_ids.exit) {
+                    synthetics.push_back(
+                        Reconstructor::make_cancel(*it, hidden.entry.timestamp, it->size));
+                    volume += static_cast<std::int64_t>(it->size);
+                    it = partially_deleted.erase(it);
+                } else {
+                    ++it;
+                }
             }
 
             if (volume > 0) {
@@ -381,47 +442,32 @@ auto Reconstructor::synthetics() const -> std::vector<Message> {
                     .price = price,
                     .direction = second.entry.direction,
                 };
-                only_created.insert(only_created.begin(),
-                                    fake_order); // begin or end?, also within fakes
-                // only_created.push_back(fake_order);
+                only_created.insert(only_created.begin(), fake_order);
                 synthetics.push_back(fake_order);
             } else if (volume < 0) {
                 volume = std::abs(volume);
 
                 auto it = only_created.begin();
-                while (volume != 0 && it != only_created.end()
-                       // timestamp won´t work if orphans not completely fulfilled are used, since
-                       // we don´t know when they were created
-                       //    it->timestamp < second.entry.timestamp) {
-                       //    it->order_id < next_order_id
-                ) {
-                    if (it->order_id >= order_ids.second && it->order_id < synthetic_id_start) {
+                while (volume != 0 && it != only_created.end()) {
+                    if (it->order_id >= order_ids.exit && it->order_id < synthetic_id_start) {
                         ++it;
                         continue;
                     }
 
                     if (it->size > volume) {
-                        Message cancel{
-                            .timestamp = first.exit.timestamp,
-                            .type = Type::CANCEL,
-                            .order_id = it->order_id,
-                            .size = static_cast<Size>(volume),
-                            .price = price,
-                            .direction = it->direction,
-                        };
-                        synthetics.push_back(cancel);
+                        synthetics.push_back(Reconstructor::make_cancel(*it, hidden.entry.timestamp,
+                                                                        static_cast<Size>(volume)));
                         it->size -= volume;
                         volume = 0;
                     } else {
-                        Message delete_{
-                            .timestamp = first.exit.timestamp,
-                            .type = Type::DELETE,
-                            .order_id = it->order_id,
-                            .size = it->size,
-                            .price = price,
-                            .direction = it->direction,
-                        };
-                        synthetics.push_back(delete_);
+                        // even if we're entirely consuming an order that was created and never
+                        // deleted, there could still exist other EXECUTE or CANCEL messages
+                        // referencing it, from which we have subtracted the size used here.
+                        // given a cancel is always safe to use and if cancelling the entire
+                        // order size the result is the same as a delete, we can use it here for
+                        // any scenario
+                        synthetics.push_back(
+                            Reconstructor::make_cancel(*it, hidden.entry.timestamp, it->size));
                         volume -= static_cast<std::int64_t>(it->size);
                         ++it;
                     }
@@ -442,12 +488,22 @@ auto Reconstructor::synthetics() const -> std::vector<Message> {
                 "no more fakes to cancel @{}, {}", price,
                 debug(price, views, synthetics, only_referenced, only_created, orphans_consumed))};
         }
+        if (!partially_deleted.empty()) {
+            throw std::runtime_error{std::format(
+                "unconsumed hidden partial deletions @{}, {}", price,
+                debug(price, views, synthetics, only_referenced, only_created, orphans_consumed))};
+        }
     }
 
     return synthetics;
 }
 
 auto Reconstructor::next_order_id(MessageLine idx) const -> OrderId {
+    // message lines start at 1. If idx is 0, then we are at market open
+    if (idx == 0) {
+        return 0;
+    }
+
     auto begin = ranges::next(messages_.begin(), static_cast<std::ptrdiff_t>(idx - 1));
     constexpr auto next_order = [](auto const &msg) -> bool { return msg.type == Type::ORDER; };
     auto it = ranges::find_if(begin, messages_.end(), next_order);
@@ -461,12 +517,23 @@ auto Reconstructor::next_order_id(MessageLine idx) const -> OrderId {
     return it->order_id;
 }
 
-auto Reconstructor::synthetic(Message const &orphan, Timestamp dt) -> Message {
+auto Reconstructor::make_order(Message const &original, Timestamp dt) -> Message {
     return Message{
         .timestamp = dt,
         .type = Type::ORDER,
+        .order_id = original.order_id,
+        .size = original.size,
+        .price = original.price,
+        .direction = original.direction,
+    };
+}
+
+auto Reconstructor::make_cancel(Message const &orphan, Timestamp dt, Size size) -> Message {
+    return Message{
+        .timestamp = dt,
+        .type = Type::CANCEL,
         .order_id = orphan.order_id,
-        .size = orphan.size,
+        .size = size,
         .price = orphan.price,
         .direction = orphan.direction,
     };
