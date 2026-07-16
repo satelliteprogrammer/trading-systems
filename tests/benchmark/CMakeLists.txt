@@ -1,9 +1,37 @@
+add_library(lobster_replay
+  replay.cpp
+)
+target_compile_features(lobster_replay PUBLIC cxx_std_26)
+target_include_directories(lobster_replay PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(lobster_replay PUBLIC book tools_lobster_parser)
+
 add_executable(bench_big_o_add
   bench_big_o_add.cpp
 )
+target_link_libraries(bench_big_o_add PRIVATE lobster_replay)
 
-target_compile_features(bench_big_o_add PUBLIC cxx_std_23)
-target_link_libraries(bench_big_o_add PRIVATE book tools_lobster_parser)
+add_executable(lobster_validate
+  lobster_validate.cpp
+)
+target_link_libraries(lobster_validate PRIVATE lobster_replay)
+
+# Replays the LOBSTER sample datasets through the book and checks every
+# message against the recorded orderbook. Off by default: the datasets live
+# in Git LFS and each run takes minutes, so only the LOBSTER Validation
+# workflow (and anyone opting in locally) registers them.
+option(LOBSTER_VALIDATION "Register LOBSTER dataset validation tests" OFF)
+if(LOBSTER_VALIDATION)
+  foreach(symbol IN ITEMS AAPL MSFT)
+    add_test(
+      NAME lobster_validate_${symbol}
+      COMMAND
+        lobster_validate
+        ${CMAKE_SOURCE_DIR}/data/lobster/${symbol}_2012-06-21_34200000_57600000_message_10.csv
+        ${CMAKE_SOURCE_DIR}/data/lobster/${symbol}_2012-06-21_34200000_57600000_orderbook_10.csv)
+    set_tests_properties(lobster_validate_${symbol} PROPERTIES LABELS lobster
+                                                               TIMEOUT 1800)
+  endforeach()
+endif()
 
 set(QUANTCUP ${CMAKE_SOURCE_DIR}/external/quantcup)
 
