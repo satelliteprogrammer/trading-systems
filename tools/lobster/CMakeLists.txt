@@ -2,6 +2,7 @@ add_library(tools_lobster_parser
   algorithm.cpp
   parser.cpp
   reconstructor.cpp
+  synthetics.cpp
 )
 
 target_compile_features(tools_lobster_parser PUBLIC cxx_std_26)
@@ -16,6 +17,7 @@ if(PROJECT_IS_TOP_LEVEL AND BUILD_TESTING)
   add_executable(tests_lobster_reconstructor
     algorithm.test.cpp
     reconstructor.test.cpp
+    synthetics.test.cpp
   )
   target_compile_features(tests_lobster_reconstructor PUBLIC cxx_std_26)
   target_link_libraries(tests_lobster_reconstructor PRIVATE Catch2::Catch2WithMain

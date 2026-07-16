@@ -2,6 +2,7 @@
 
 #include "algorithm.hpp"
 #include "parser.hpp"
+#include "synthetics.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -59,7 +60,7 @@ Reconstructor::Reconstructor(LobsterData const &data)
     ranges::stable_sort(messages_, {}, &Message::timestamp);
 }
 
-auto Reconstructor::messages() && -> std::vector<Message> { return std::move(messages_); }
+auto Reconstructor::messages() && -> Messages { return std::move(messages_); }
 
 auto Reconstructor::expected_orderbooks() && -> std::vector<ExpectedOrderbook> {
     return std::move(expected_orderbooks_);
@@ -67,8 +68,8 @@ auto Reconstructor::expected_orderbooks() && -> std::vector<ExpectedOrderbook> {
 
 auto Reconstructor::orphans() const -> Orphans {
     std::map<OrderId, Message> created_ids;
-    std::map<OrderId, std::vector<Message>> deleted;
-    std::map<OrderId, std::vector<Message>> referenced;
+    std::map<OrderId, Messages> deleted;
+    std::map<OrderId, Messages> referenced;
 
     for (auto const &msg : messages_) {
         switch (msg.type) {
@@ -145,7 +146,7 @@ auto Reconstructor::orphans() const -> Orphans {
         }
     }
 
-    auto by_timestamp = [](auto &&map) -> std::vector<Message> {
+    auto by_timestamp = [](auto &&map) -> Messages {
         auto result = algorithm::map_to<std::vector>(std::forward<decltype(map)>(map));
         ranges::sort(result, {}, &Message::timestamp);
         return result;
@@ -155,11 +156,8 @@ auto Reconstructor::orphans() const -> Orphans {
             .partially_deleted = by_timestamp(std::move(partially_deleted))};
 }
 
-auto Reconstructor::levels() const -> std::map<Price, std::vector<PriceView>> {
-    std::map<Price, std::vector<PriceView>> levels;
-
-    // auto initial_orderbook = expected_orderbooks_.front();
-    // auto initial_trade = messages_.front();
+auto Reconstructor::levels() const -> Levels {
+    Levels levels;
 
     for (auto const &[line, orderbook, message] : views::zip(
              views::iota(0U), views::concat(std::vector{initial_orderbook()}, expected_orderbooks_),
@@ -281,217 +279,26 @@ auto Reconstructor::initial_orderbook() const -> ExpectedOrderbook {
     return initial_orderbook_;
 }
 
-auto Reconstructor::synthetics() const -> std::vector<Message> {
+auto Reconstructor::synthetics() const -> Messages {
     std::println("Retrieving orphan messages...");
     auto orphans = this->orphans();
-
-    auto only_referenced_map =
-        algorithm::vector_to_map(std::move(orphans.only_referenced), &Message::price);
-    auto only_created_map =
-        algorithm::vector_to_map(std::move(orphans.only_created), &Message::price);
-    auto partially_deleted_map =
-        algorithm::vector_to_map(std::move(orphans.partially_deleted), &Message::price);
 
     std::println("Collecting orderbook levels...");
     auto levels = this->levels();
 
     std::println("Generating missing messages...");
-    std::vector<Message> synthetics;
-    auto const synthetic_id_start = this->next_order_id(messages_.size());
-    OrderId synthetic_id = synthetic_id_start;
-    auto const first_order_id = this->next_order_id(1);
-
-    for (auto [price, views] : levels) {
-        assert(!views.empty());
-
-        PriceView start_view{.entry = {.line = 0,
-                                       .timestamp = std::chrono::clock_cast<Clock>(MarketOpen),
-                                       .size = 0},
-                             .exit = {.line = 0,
-                                      .timestamp = std::chrono::clock_cast<Clock>(MarketOpen),
-                                      .size = 0}};
-        views.insert(views.begin(), start_view);
-
-        auto node = only_referenced_map.extract(price);
-        auto only_referenced = node ? std::move(node.mapped()) : std::vector<Message>{};
-        node = only_created_map.extract(price);
-        auto only_created = node ? std::move(node.mapped()) : std::vector<Message>{};
-        node = partially_deleted_map.extract(price);
-        auto partially_deleted = node ? std::move(node.mapped()) : std::vector<Message>{};
-
-        std::vector<Message> orphans_consumed; // debug only
-
-        auto debug = [this](auto const &price, auto const &views, auto const &synthetics,
-                            auto const &only_referenced, auto const &only_created,
-                            auto const &orphans_consumed) -> std::string {
-            std::ostringstream oss;
-            oss << "price: " << price << '\n';
-
-            oss << "views:\n";
-            for (auto const &view : views) {
-                oss << std::format("{} | OrderId: {} ... {}", view, next_order_id(view.entry.line),
-                                   next_order_id(view.exit.line))
-                    << '\n';
-            }
-
-            oss << "synthetics\n";
-            auto fp = [&](auto const &msg) -> bool { return msg.price == price; };
-            for (auto const &synthetic : synthetics | std::views::filter(fp)) {
-                oss << std::format("{}", synthetic) << '\n';
-            }
-
-            if (!only_referenced.empty()) {
-                oss << "orphans left\n";
-                for (auto const &referenced : only_referenced) {
-                    oss << std::format("{}", referenced) << '\n';
-                }
-            } else {
-                oss << "no orphans left\n";
-            }
-
-            if (!orphans_consumed.empty()) {
-                oss << "orphans consumed\n";
-                for (auto const &consumed : orphans_consumed) {
-                    oss << std::format("{}", consumed) << '\n';
-                }
-            } else {
-                oss << "no orphans consumed\n";
-            }
-
-            if (!only_created.empty()) {
-                oss << "created available for use\n";
-                oss << "from " << std::format("{}", only_created.front()) << "\n  to "
-                    << std::format("{}", only_created.back());
-            } else {
-                oss << "no alive orders left\n";
-            }
-            return oss.str();
-        };
-
-        for (auto const &[first, second] : views | std::views::adjacent<2>) {
-            // generate all orphans that belong in this view interval
-
-            PriceView hidden{.entry = first.exit, .exit = second.entry};
-            struct {
-                OrderId entry;
-                OrderId exit;
-            } order_ids{
-                .entry = next_order_id(hidden.entry.line),
-                .exit = next_order_id(hidden.exit.line),
-            };
-            auto volume = static_cast<std::int64_t>(hidden.exit.size - hidden.entry.size);
-
-            std::vector<Message> orphans_in_view;
-            for (auto it = only_referenced.begin(); it != only_referenced.end();) {
-                bool in_view{false};
-
-                // while order IDs are monotonically increasing, there are instances where orders
-                // with IDs pre-market open are referenced out-of-order early in the replay sequence
-                // capture these when they are in the second view
-                if (it->order_id < first_order_id) {
-                    if (*it->index + 1 >= second.entry.line && *it->index + 1 <= second.exit.line) {
-                        std::println("Found orphan referenced out-of-order: {}", *it);
-                        in_view = true;
-                    }
-                } else if (it->order_id >= order_ids.entry && it->order_id < order_ids.exit) {
-                    in_view = true;
-                }
-
-                if (in_view) {
-                    orphans_in_view.emplace_back(*it);
-                    orphans_consumed.emplace_back(*it);
-                    it = only_referenced.erase(it);
-                } else {
-                    ++it;
-                }
-            }
-            ranges::sort(orphans_in_view, {}, &Message::order_id);
-
-            for (auto &&orphan : orphans_in_view) {
-                synthetics.push_back(Reconstructor::make_order(orphan, hidden.entry.timestamp));
-                volume -= static_cast<std::int64_t>(orphan.size);
-            }
-
-            for (auto it = partially_deleted.begin(); it != partially_deleted.end();) {
-                if (it->order_id < order_ids.exit) {
-                    synthetics.push_back(
-                        Reconstructor::make_cancel(*it, hidden.entry.timestamp, it->size));
-                    volume += static_cast<std::int64_t>(it->size);
-                    it = partially_deleted.erase(it);
-                } else {
-                    ++it;
-                }
-            }
-
-            if (volume > 0) {
-                Message fake_order{
-                    .timestamp = first.exit.timestamp,
-                    .type = Type::ORDER,
-                    .order_id = synthetic_id++,
-                    .size = static_cast<Size>(volume),
-                    .price = price,
-                    .direction = second.entry.direction,
-                };
-                only_created.insert(only_created.begin(), fake_order);
-                synthetics.push_back(fake_order);
-            } else if (volume < 0) {
-                volume = std::abs(volume);
-
-                auto it = only_created.begin();
-                while (volume != 0 && it != only_created.end()) {
-                    if (it->order_id >= order_ids.exit && it->order_id < synthetic_id_start) {
-                        ++it;
-                        continue;
-                    }
-
-                    if (it->size > volume) {
-                        synthetics.push_back(Reconstructor::make_cancel(*it, hidden.entry.timestamp,
-                                                                        static_cast<Size>(volume)));
-                        it->size -= volume;
-                        volume = 0;
-                    } else {
-                        // even if we're entirely consuming an order that was created and never
-                        // deleted, there could still exist other EXECUTE or CANCEL messages
-                        // referencing it, from which we have subtracted the size used here.
-                        // given a cancel is always safe to use and if cancelling the entire
-                        // order size the result is the same as a delete, we can use it here for
-                        // any scenario
-                        synthetics.push_back(
-                            Reconstructor::make_cancel(*it, hidden.entry.timestamp, it->size));
-                        volume -= static_cast<std::int64_t>(it->size);
-                        ++it;
-                    }
-                }
-                only_created.erase(only_created.begin(), it);
-
-                if (volume != 0) {
-                    std::println("{}", debug(price, views, synthetics, only_referenced,
-                                             only_created, orphans_consumed));
-                    throw std::runtime_error{std::format("failed to fulfill volume ({}) @{}\n{}",
-                                                         volume, price, hidden)};
-                }
-            }
-        }
-
-        if (!only_referenced.empty()) {
-            throw std::runtime_error{std::format(
-                "no more fakes to cancel @{}, {}", price,
-                debug(price, views, synthetics, only_referenced, only_created, orphans_consumed))};
-        }
-        if (!partially_deleted.empty()) {
-            throw std::runtime_error{std::format(
-                "unconsumed hidden partial deletions @{}, {}", price,
-                debug(price, views, synthetics, only_referenced, only_created, orphans_consumed))};
-        }
-    }
-
-    return synthetics;
+    return Synthetics{orphans, levels, std::bind_front(&Reconstructor::next_order_id, this)}();
 }
 
 auto Reconstructor::next_order_id(MessageLine idx) const -> OrderId {
     // message lines start at 1. If idx is 0, then we are at market open
     if (idx == 0) {
         return 0;
+    }
+
+    // find the order ID after the last ORDER message
+    if (idx > messages_.size()) {
+        idx = messages_.size() + 1;
     }
 
     auto begin = ranges::next(messages_.begin(), static_cast<std::ptrdiff_t>(idx - 1));
@@ -505,28 +312,6 @@ auto Reconstructor::next_order_id(MessageLine idx) const -> OrderId {
         return it->order_id + 1;
     }
     return it->order_id;
-}
-
-auto Reconstructor::make_order(Message const &original, Timestamp dt) -> Message {
-    return Message{
-        .timestamp = dt,
-        .type = Type::ORDER,
-        .order_id = original.order_id,
-        .size = original.size,
-        .price = original.price,
-        .direction = original.direction,
-    };
-}
-
-auto Reconstructor::make_cancel(Message const &orphan, Timestamp dt, Size size) -> Message {
-    return Message{
-        .timestamp = dt,
-        .type = Type::CANCEL,
-        .order_id = orphan.order_id,
-        .size = size,
-        .price = orphan.price,
-        .direction = orphan.direction,
-    };
 }
 
 LobsterData::LobsterData(std::filesystem::path const &messages,
