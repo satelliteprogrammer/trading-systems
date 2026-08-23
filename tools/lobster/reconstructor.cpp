@@ -1,6 +1,7 @@
 #include "lobster/reconstructor.hpp"
 
 #include "algorithm.hpp"
+#include "lobster/ranges.hpp"
 #include "parser.hpp"
 #include "synthetics.hpp"
 
@@ -13,8 +14,6 @@
 #include <ranges>
 
 using namespace std::literals::chrono_literals;
-namespace ranges = std::ranges;
-namespace views = std::views;
 
 namespace ome::tools::lobster {
 
@@ -159,9 +158,11 @@ auto Reconstructor::orphans() const -> Orphans {
 auto Reconstructor::levels() const -> Levels {
     Levels levels;
 
-    for (auto const &[line, orderbook, message] : views::zip(
-             views::iota(0U), views::concat(std::vector{initial_orderbook()}, expected_orderbooks_),
-             views::concat(std::vector{messages_.front()}, messages_))) {
+    std::vector const initial_orderbook_{initial_orderbook()};
+    std::vector const initial_message_{messages_.front()};
+    for (auto const &[line, orderbook, message] :
+         views::zip(views::iota(0U), views::concat(initial_orderbook_, expected_orderbooks_),
+                    views::concat(initial_message_, messages_))) {
         // fill missing book prices
         constexpr auto diff = 100;
         std::flat_set<Limit> missing_levels;
@@ -177,7 +178,7 @@ auto Reconstructor::levels() const -> Levels {
             return (price <= orderbook.bids.begin()->price) ? Direction::BUY : Direction::SELL;
         };
 
-        auto level_views = std::views::concat(orderbook.bids, orderbook.asks, missing_levels);
+        auto level_views = views::concat(orderbook.bids, orderbook.asks, missing_levels);
 
         // add new levels, update exit volume
         for (auto const &level : level_views) {
@@ -191,8 +192,7 @@ auto Reconstructor::levels() const -> Levels {
                                       .direction = direction(level.price),
                                   }};
                 levels.emplace(level.price, std::vector{initial});
-            } else if (levels[level.price].back().exit.timestamp !=
-                       std::chrono::clock_cast<Clock>(MarketClose)) {
+            } else if (levels[level.price].back().exit.timestamp != MarketClose) {
                 // level reentered view
                 PriceView view{.entry = {
                                    .line = line,
@@ -212,7 +212,7 @@ auto Reconstructor::levels() const -> Levels {
         for (auto &[price, views] : levels) {
             auto it = ranges::find(level_views, price, &Limit::price);
             if (it == level_views.end()) {
-                if (views.back().exit.timestamp == std::chrono::clock_cast<Clock>(MarketClose)) {
+                if (views.back().exit.timestamp == MarketClose) {
                     views.back().exit.line = line;
                     views.back().exit.timestamp = message.timestamp;
                     views.back().exit.direction = direction(price);
@@ -223,7 +223,7 @@ auto Reconstructor::levels() const -> Levels {
 
     // close views still open when the data ends
     for (auto &views : levels | views::values) {
-        if (views.back().exit.timestamp == std::chrono::clock_cast<Clock>(MarketClose)) {
+        if (views.back().exit.timestamp == MarketClose) {
             views.back().exit.line = messages_.size();
             views.back().exit.timestamp = messages_.back().timestamp;
         }

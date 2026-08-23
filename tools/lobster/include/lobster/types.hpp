@@ -19,11 +19,7 @@ enum class Type : std::uint8_t {
     HALT = 7,
 };
 
-#if __cpp_lib_chrono >= 201907L
-using Clock = std::chrono::gps_clock;
-#else
 using Clock = std::chrono::system_clock;
-#endif
 
 using MessageLine = std::size_t;
 using Timestamp = std::chrono::time_point<Clock, std::chrono::nanoseconds>;
@@ -68,8 +64,8 @@ struct PriceSnapshot {
 };
 
 struct PriceView {
-    PriceSnapshot entry{.timestamp = std::chrono::clock_cast<Clock>(MarketOpen)};
-    PriceSnapshot exit{.timestamp = std::chrono::clock_cast<Clock>(MarketClose)};
+    PriceSnapshot entry{.timestamp = MarketOpen};
+    PriceSnapshot exit{.timestamp = MarketClose};
 };
 
 using PriceViews = std::vector<PriceView>;

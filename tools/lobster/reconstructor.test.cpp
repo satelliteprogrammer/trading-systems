@@ -1,4 +1,5 @@
 #include "lobster/reconstructor.hpp"
+#include "lobster/ranges.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -19,8 +20,6 @@ namespace ome::tools::lobster {
 namespace {
 
 // NOLINTBEGIN(readability-magic-numbers)
-
-constexpr auto open_timestamp() -> Timestamp { return std::chrono::clock_cast<Clock>(MarketOpen); }
 
 auto msg(double time, Type type, OrderId id, Size size, Price price, Direction dir) -> std::string {
     return std::format("{:.9f},{},{},{},{},{}", time, std::to_underlying(type), id, size, price,
@@ -85,16 +84,16 @@ struct Reconstruction {
 
     // position in the reconstructed stream of the original message at 1-based line
     [[nodiscard]] auto position_of_line(MessageLine line) const -> std::size_t {
-        auto it = std::ranges::find(messages, line - 1, &Message::index);
+        auto it = ranges::find(messages, line - 1, &Message::index);
         REQUIRE(it != messages.end());
-        return static_cast<std::size_t>(std::ranges::distance(messages.begin(), it));
+        return static_cast<std::size_t>(ranges::distance(messages.begin(), it));
     }
 
     [[nodiscard]] auto position_of_synthetic(auto predicate) const -> std::size_t {
-        auto it = std::ranges::find_if(messages,
-                                       [&](Message const &m) { return !m.index && predicate(m); });
+        auto it =
+            ranges::find_if(messages, [&](Message const &m) { return !m.index && predicate(m); });
         REQUIRE(it != messages.end());
-        return static_cast<std::size_t>(std::ranges::distance(messages.begin(), it));
+        return static_cast<std::size_t>(ranges::distance(messages.begin(), it));
     }
 };
 
@@ -116,7 +115,7 @@ void replay_and_validate(Reconstruction const &reconstruction) {
 
     auto volume = [&](Price price) -> Size {
         Size total = 0;
-        for (auto const &[order_price, size] : live | std::views::values) {
+        for (auto const &[order_price, size] : live | views::values) {
             if (order_price == price) {
                 total += size;
             }
@@ -154,7 +153,7 @@ void replay_and_validate(Reconstruction const &reconstruction) {
 
         if (message.index) {
             auto const &expected = reconstruction.expected.at(*message.index);
-            for (auto const &limit : std::views::concat(expected.bids, expected.asks)) {
+            for (auto const &limit : views::concat(expected.bids, expected.asks)) {
                 INFO(std::format("after line {}: expected {} @{}", *message.index + 1,
                                  limit.quantity, limit.price));
                 REQUIRE(volume(limit.price) == limit.quantity);
@@ -198,11 +197,11 @@ TEST_CASE("Reconstructor merges synthetics into the recorded stream in order", "
     CHECK(order_70 < reconstruction.position_of_line(3));
 
     // the pre-open 25 shares get a fake order at the open, cancelled while hidden
-    auto fake = std::ranges::find_if(reconstruction.messages, [](Message const &m) {
+    auto fake = ranges::find_if(reconstruction.messages, [](Message const &m) {
         return !m.index && m.type == Type::ORDER && m.price == 9900 && m.size == 25;
     });
     REQUIRE(fake != reconstruction.messages.end());
-    CHECK(fake->timestamp == open_timestamp());
+    CHECK(fake->timestamp == MarketOpen);
 
     replay_and_validate(reconstruction);
 }

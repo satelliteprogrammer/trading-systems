@@ -18,11 +18,7 @@ namespace ome::book {
 using Price = std::uint64_t;
 
 using OrderId = std::uint64_t;
-#if __cpp_lib_chrono >= 201907L
-using Timestamp = std::chrono::gps_time<std::chrono::nanoseconds>;
-#else
 using Timestamp = std::chrono::sys_time<std::chrono::nanoseconds>;
-#endif
 
 struct LimitOrder {
     std::uint64_t quantity{};
@@ -46,7 +42,11 @@ class Book {
   public:
     /// Called once per fill with the id of the resting order, the resting order itself,
     /// the execution price and the executed quantity.
+#if __cpp_lib_function_ref >= 202306L
     using OrderCallback = std::function_ref<void(OrderId, Order const &, Price, std::uint64_t)>;
+#else
+    using OrderCallback = std::function<void(OrderId, Order const &, Price, std::uint64_t)>;
+#endif
     static constexpr auto default_callback = [](OrderId, Order const &, Price,
                                                 std::uint64_t) -> void {};
 

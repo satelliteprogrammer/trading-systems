@@ -1,3 +1,6 @@
+# fallback for range adaptors the standard library lacks, see include/lobster/ranges.hpp
+find_package(range-v3 CONFIG QUIET)
+
 add_library(tools_lobster_parser
   algorithm.cpp
   parser.cpp
@@ -11,6 +14,9 @@ target_include_directories(
   PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
          $<INSTALL_INTERFACE:include>)
 target_link_libraries(tools_lobster_parser PRIVATE book)
+if(range-v3_FOUND)
+  target_link_libraries(tools_lobster_parser PUBLIC range-v3)
+endif()
 
 if(PROJECT_IS_TOP_LEVEL AND BUILD_TESTING)
 

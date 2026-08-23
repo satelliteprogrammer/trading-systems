@@ -5,6 +5,7 @@ extern "C" {
 }
 
 #include <cstring>
+#include <functional>
 
 using namespace ome::book;
 

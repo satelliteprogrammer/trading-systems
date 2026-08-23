@@ -6,7 +6,7 @@ Find the benchmarks [here](docs/benchmarks.md).
 
 ## Dependencies
 
- - Compiler supporting C++26 (std::views::concat to be specific)
+ - Compiler supporting C++26 (std::views::concat to be specific, or range-v3 as a fallback)
  - CMake >= 3.21
  - Catch2
 

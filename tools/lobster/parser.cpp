@@ -31,7 +31,7 @@ auto parse_message(std::string const &line) -> Message {
     auto time_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(time_seconds);
     auto timestamp = std::chrono::sys_days{LobsterDay} + time_ns;
 
-    return Message{.timestamp = std::chrono::clock_cast<Clock>(timestamp),
+    return Message{.timestamp = timestamp,
                    .type = order_type,
                    .order_id = order_id,
                    .size = size,

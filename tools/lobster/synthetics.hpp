@@ -7,17 +7,23 @@
 
 namespace ome::tools::lobster {
 
+#if __cpp_lib_function_ref >= 202306L
+using NextOrderId = std::function_ref<OrderId(MessageLine)>;
+#else
+using NextOrderId = std::function<OrderId(MessageLine)>;
+#endif
+
 class SyntheticsError : public std::runtime_error {
   public:
     explicit SyntheticsError(auto error, auto const &price, auto const &views,
                              auto const &synthetics, auto const &only_referenced,
                              auto const &only_created, auto const &orphans_consumed,
-                             std::function_ref<OrderId(MessageLine)> next_order_id);
+                             NextOrderId next_order_id);
 };
 
 class Synthetics {
   public:
-    Synthetics(Orphans const &, Levels const &, std::function_ref<OrderId(MessageLine)>);
+    Synthetics(Orphans const &, Levels const &, NextOrderId);
 
     /// Return missing orders (synthetics) for the given orphans/levels.
     ///
@@ -52,7 +58,7 @@ class Synthetics {
     std::unordered_map<Price, Messages> only_created_by_price;
     std::unordered_map<Price, Messages> partially_deleted_by_price;
 
-    std::function_ref<OrderId(MessageLine)> next_order_id;
+    NextOrderId next_order_id;
     OrderId first_order_id{next_order_id(1)};
     OrderId first_synthetic_id{next_order_id(-1)};
 

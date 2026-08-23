@@ -1,4 +1,5 @@
 #include "algorithm.hpp"
+#include "lobster/ranges.hpp"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -70,7 +71,7 @@ TEST_CASE("vector_to_map", "[algorithm]") {
         auto map = algorithm::vector_to_map(objects, proj);
 
         REQUIRE(map.size() == 5);
-        for (auto &&values : map | std::views::values) {
+        for (auto &&values : map | views::values) {
             REQUIRE(values.size() == 1);
             CHECK_THAT(values, AllMatch(Predicate<Spy>(std::mem_fn(&Spy::is_copy_ctor))));
         }
@@ -80,7 +81,7 @@ TEST_CASE("vector_to_map", "[algorithm]") {
         auto map = algorithm::vector_to_map(std::move(objects), proj);
 
         REQUIRE(map.size() == 5);
-        for (auto &&values : map | std::views::values) {
+        for (auto &&values : map | views::values) {
             REQUIRE(values.size() == 1);
             CHECK_THAT(values, AllMatch(Predicate<Spy>(std::mem_fn(&Spy::is_move_ctor))));
         }

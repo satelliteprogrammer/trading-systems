@@ -1,6 +1,7 @@
 #include "synthetics.hpp"
 
 #include "algorithm.hpp"
+#include "lobster/ranges.hpp"
 #include "lobster/types.hpp"
 
 #include <algorithm>
@@ -12,11 +13,9 @@
 
 namespace ome::tools::lobster {
 
-namespace ranges = std::ranges;
 using algorithm::vector_to_map;
 
-Synthetics::Synthetics(Orphans const &orphans, Levels const &levels,
-                       std::function_ref<OrderId(MessageLine)> next_order_id_)
+Synthetics::Synthetics(Orphans const &orphans, Levels const &levels, NextOrderId next_order_id_)
     : only_referenced_by_price{vector_to_map(orphans.only_referenced, &Message::price)},
       only_created_by_price{vector_to_map(orphans.only_created, &Message::price)},
       partially_deleted_by_price{vector_to_map(orphans.partially_deleted, &Message::price)},
@@ -25,12 +24,8 @@ Synthetics::Synthetics(Orphans const &orphans, Levels const &levels,
     for (auto [price, views] : levels) {
         assert(!views.empty());
 
-        PriceView start_view{.entry = {.line = 0,
-                                       .timestamp = std::chrono::clock_cast<Clock>(MarketOpen),
-                                       .size = 0},
-                             .exit = {.line = 0,
-                                      .timestamp = std::chrono::clock_cast<Clock>(MarketOpen),
-                                      .size = 0}};
+        PriceView start_view{.entry = {.line = 0, .timestamp = MarketOpen, .size = 0},
+                             .exit = {.line = 0, .timestamp = MarketOpen, .size = 0}};
         views.insert(views.begin(), start_view);
 
         auto &&orphans = extract(price);
@@ -86,7 +81,7 @@ auto Synthetics::extract(Price price) -> OrphansInPrice {
 auto Synthetics::synthetics_per_price(Price price, PriceViews const &views, OrphansInPrice &orphans,
                                       Messages &consumed) -> void {
 
-    for (auto const &[first, second] : views | std::views::adjacent<2>) {
+    for (auto const &[first, second] : views | views::adjacent<2>) {
         // generate all orphans that belong in this view interval
 
         PriceView hidden{.entry = first.exit, .exit = second.entry};
@@ -242,7 +237,7 @@ auto Synthetics::make_cancel(Message const &orphan, Timestamp dt, Size size) -> 
 namespace {
 auto error_msg(auto const &error, auto const &price, auto const &views, auto const &synthetics,
                auto const &only_referenced, auto const &only_created, auto const &orphans_consumed,
-               std::function_ref<OrderId(MessageLine)> next_order_id) {
+               NextOrderId next_order_id) {
 
     std::ostringstream oss;
     oss << error << '\n';
@@ -257,7 +252,7 @@ auto error_msg(auto const &error, auto const &price, auto const &views, auto con
 
     oss << "synthetics\n";
     auto fp = [&](auto const &msg) -> bool { return msg.price == price; };
-    for (auto const &synthetic : synthetics | std::views::filter(fp)) {
+    for (auto const &synthetic : synthetics | views::filter(fp)) {
         oss << std::format("{}", synthetic) << '\n';
     }
 
@@ -293,7 +288,7 @@ auto error_msg(auto const &error, auto const &price, auto const &views, auto con
 SyntheticsError::SyntheticsError(auto error, auto const &price, auto const &views,
                                  auto const &synthetics, auto const &only_referenced,
                                  auto const &only_created, auto const &orphans_consumed,
-                                 std::function_ref<OrderId(MessageLine)> next_order_id)
+                                 NextOrderId next_order_id)
     : std::runtime_error{error_msg(error, price, views, synthetics, only_referenced, only_created,
                                    orphans_consumed, next_order_id)} {}
 
