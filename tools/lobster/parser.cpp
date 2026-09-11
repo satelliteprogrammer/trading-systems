@@ -20,7 +20,7 @@ auto parse_message(std::string const &line) -> Message {
     }
 
     // NOLINTBEGIN(readability-magic-numbers)
-    auto time_seconds = std::chrono::duration<double>{std::stod(match[1].str())};
+    auto time_seconds = chrono::duration<double>{std::stod(match[1].str())};
     auto order_type = static_cast<Type>(std::stoul(match[2].str()));
     auto order_id = static_cast<OrderId>(std::stoull(match[3].str()));
     auto size = std::stoull(match[4].str());
@@ -28,8 +28,8 @@ auto parse_message(std::string const &line) -> Message {
     auto direction = static_cast<Direction>(std::stoi(match[6].str()));
     // NOLINTEND(readability-magic-numbers)
 
-    auto time_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(time_seconds);
-    auto timestamp = std::chrono::sys_days{LobsterDay} + time_ns;
+    auto time_ns = chrono::duration_cast<chrono::nanoseconds>(time_seconds);
+    auto timestamp = chrono::sys_days{LobsterDay} + time_ns;
 
     return Message{.timestamp = timestamp,
                    .type = order_type,

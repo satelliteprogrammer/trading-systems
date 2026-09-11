@@ -10,6 +10,8 @@
 
 namespace ome::tools::lobster {
 
+namespace chrono = std::chrono;
+
 enum class Type : std::uint8_t {
     ORDER = 1,
     CANCEL = 2,
@@ -19,10 +21,10 @@ enum class Type : std::uint8_t {
     HALT = 7,
 };
 
-using Clock = std::chrono::system_clock;
+using Clock = chrono::system_clock;
 
 using MessageLine = std::size_t;
-using Timestamp = std::chrono::time_point<Clock, std::chrono::nanoseconds>;
+using Timestamp = chrono::time_point<Clock, chrono::nanoseconds>;
 using OrderId = std::uint64_t;
 using Size = std::uint64_t;
 using Price = std::uint64_t;
@@ -52,9 +54,9 @@ struct Orphans {
     Messages partially_deleted;
 };
 
-constexpr auto LobsterDay = std::chrono::year{2012} / 6 / 21;
-constexpr auto MarketOpen = std::chrono::sys_days{LobsterDay} + std::chrono::hours{4};
-constexpr auto MarketClose = std::chrono::sys_days{LobsterDay} + std::chrono::hours{20};
+constexpr auto LobsterDay = chrono::year{2012} / 6 / 21;
+constexpr auto MarketOpen = chrono::sys_days{LobsterDay} + chrono::hours{4};
+constexpr auto MarketClose = chrono::sys_days{LobsterDay} + chrono::hours{20};
 
 struct PriceSnapshot {
     MessageLine line{0};

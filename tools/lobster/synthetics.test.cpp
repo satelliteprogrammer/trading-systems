@@ -16,9 +16,9 @@ namespace {
 // NOLINTBEGIN(readability-magic-numbers)
 
 auto ts(double seconds) -> Timestamp {
-    auto since_midnight = std::chrono::duration_cast<std::chrono::nanoseconds>(
-        std::chrono::duration<double>{seconds});
-    return std::chrono::sys_days{LobsterDay} + since_midnight;
+    auto since_midnight =
+        chrono::duration_cast<chrono::nanoseconds>(chrono::duration<double>{seconds});
+    return chrono::sys_days{LobsterDay} + since_midnight;
 }
 
 // an original message surviving as an orphan; line is the 1-based message line
