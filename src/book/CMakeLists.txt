@@ -8,7 +8,7 @@ if(PROJECT_IS_TOP_LEVEL AND BUILD_TESTING)
 
   add_executable(tests_api src/lob.test.cpp)
   target_compile_features(tests_api PUBLIC cxx_std_26)
-  target_link_libraries(tests_api PRIVATE Catch2::Catch2WithMain book)
+  target_link_libraries(tests_api PRIVATE Catch2::Catch2WithMain book tools_testing)
   catch_discover_tests(tests_api)
 
 endif()

@@ -35,25 +35,32 @@ endif()
 
 set(QUANTCUP ${CMAKE_SOURCE_DIR}/external/quantcup)
 
+# Headers are included as "quantcup/<header>", so quantcup's own limits.h can't
+# shadow the system <limits.h>.
+add_library(quantcup INTERFACE)
+target_include_directories(quantcup INTERFACE ${CMAKE_SOURCE_DIR}/external)
+
 add_executable(quantcup_test
   ${QUANTCUP}/test.c
   quantcup_engine.cpp
 )
 target_compile_features(quantcup_test PRIVATE cxx_std_26)
-target_include_directories(quantcup_test PRIVATE ${QUANTCUP})
-target_link_libraries(quantcup_test PRIVATE book)
+target_link_libraries(quantcup_test PRIVATE book quantcup)
 # test.c calls test()/test_cancel() before they are declared; silence the
 # C99 implicit-function-declaration error that Clang 21 raises by default.
 target_compile_options(quantcup_test PRIVATE
   $<$<COMPILE_LANGUAGE:C>:-Wno-implicit-function-declaration>)
 
-add_executable(quantcup_score
-  ${QUANTCUP}/score.c
-  quantcup_engine.cpp
-)
-target_compile_features(quantcup_score PRIVATE cxx_std_26)
-target_include_directories(quantcup_score PRIVATE ${QUANTCUP})
-target_link_libraries(quantcup_score PRIVATE book m rt)
-# score.c uses sched_getaffinity without including <sched.h>; force-include it.
-target_compile_options(quantcup_score PRIVATE
-  $<$<COMPILE_LANGUAGE:C>:-include sched.h -D_GNU_SOURCE -Wno-incompatible-pointer-types>)
+# Scores are only comparable on the reference machine (see docs/benchmarks.md),
+# and score.c relies on Linux's sched_getaffinity and librt.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  add_executable(quantcup_score
+    ${QUANTCUP}/score.c
+    quantcup_engine.cpp
+  )
+  target_compile_features(quantcup_score PRIVATE cxx_std_26)
+  target_link_libraries(quantcup_score PRIVATE book quantcup m rt)
+  # score.c uses sched_getaffinity without including <sched.h>; force-include it.
+  target_compile_options(quantcup_score PRIVATE
+    $<$<COMPILE_LANGUAGE:C>:-include sched.h -D_GNU_SOURCE -Wno-incompatible-pointer-types>)
+endif()
