@@ -26,7 +26,7 @@ auto main(int argc, char *argv[]) -> int {
 
     try {
         LobsterReplay replay{fs::path{argv[1]}, fs::path{argv[2]}};
-        ome::book::Book book;
+        ome::book::Engine book;
         std::ofstream results{"results.csv"};
 
         auto timed = [&](std::size_t op, auto const &call) -> auto {

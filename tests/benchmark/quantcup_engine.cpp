@@ -14,7 +14,7 @@ using namespace ome::book;
 
 namespace {
 
-Book book;
+Engine book;
 
 auto execute(t_order const &order, OrderId /*id*/, Order const &order_, Price price,
              std::uint64_t quantity) {
@@ -34,9 +34,9 @@ auto execute(t_order const &order, OrderId /*id*/, Order const &order_, Price pr
 
 } // namespace
 
-void init() { book = Book{MAX_LIVE_ORDERS}; }
+void init() { book = Engine{MAX_LIVE_ORDERS}; }
 
-void destroy() { book = Book{}; }
+void destroy() { book = Engine{}; }
 
 // quantcup requires ids to start at 1; the book's ids start at 0, so shift by one.
 

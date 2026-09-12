@@ -38,7 +38,7 @@ struct SellOrder : Order {
 
 template <typename T> using expected = std::expected<T, std::string_view>;
 
-class Book {
+class Engine {
   public:
     /// Called once per fill with the id of the resting order, the resting order itself,
     /// the execution price and the executed quantity.
@@ -55,7 +55,7 @@ class Book {
     /// \param max_orders bounds the total number of orders added over the book's lifetime,
     /// not just concurrently live ones: ids are assigned sequentially, never reused, and
     /// index directly into a preallocated arena.
-    explicit Book(std::size_t max_orders = default_max_orders);
+    explicit Engine(std::size_t max_orders = default_max_orders);
 
     /// Adds buy order to book.
     ///

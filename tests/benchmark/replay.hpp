@@ -78,13 +78,13 @@ class LobsterReplay {
 
     // Checks the book against the expected orderbook line of the last
     // replayed message; synthetic messages have no line to compare against.
-    [[nodiscard]] auto validate(book::Book const &book) const -> ValidationResult;
+    [[nodiscard]] auto validate(book::Engine const &book) const -> ValidationResult;
 
     // Applies the trade to the book, wrapping every book operation in
     // run(op, call) where op is the Trade variant index, so callers can
     // instrument the calls.
     template <typename Run>
-    auto apply(Trade const &trade, book::Book &book, Run &&run)
+    auto apply(Trade const &trade, book::Engine &book, Run &&run)
         -> std::expected<void, std::string_view> {
         auto const op = trade.index();
         return std::visit(

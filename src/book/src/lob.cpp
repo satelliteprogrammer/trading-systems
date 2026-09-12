@@ -6,9 +6,9 @@
 
 namespace ome::book {
 
-Book::Book(std::size_t max_orders) : orders{max_orders} {}
+Engine::Engine(std::size_t max_orders) : orders{max_orders} {}
 
-auto Book::add(BuyOrder order, OrderCallback on_fill) -> expected<OrderId> {
+auto Engine::add(BuyOrder order, OrderCallback on_fill) -> expected<OrderId> {
     auto const id = next_id++;
     assert(id < orders.size());
 
@@ -24,7 +24,7 @@ auto Book::add(BuyOrder order, OrderCallback on_fill) -> expected<OrderId> {
     return id;
 }
 
-auto Book::add(SellOrder order, OrderCallback on_fill) -> expected<OrderId> {
+auto Engine::add(SellOrder order, OrderCallback on_fill) -> expected<OrderId> {
     auto const id = next_id++;
     assert(id < orders.size());
 
@@ -40,7 +40,7 @@ auto Book::add(SellOrder order, OrderCallback on_fill) -> expected<OrderId> {
     return id;
 }
 
-auto Book::cancel(OrderId id) -> expected<void> {
+auto Engine::cancel(OrderId id) -> expected<void> {
     assert(id < orders.size());
 
     auto &[price, order_it] = orders[id];
@@ -73,7 +73,7 @@ auto Book::cancel(OrderId id) -> expected<void> {
 }
 
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
-auto Book::cancel(OrderId id, std::uint64_t quantity) -> expected<void> {
+auto Engine::cancel(OrderId id, std::uint64_t quantity) -> expected<void> {
     assert(id < orders.size());
 
     auto &[price, order_it] = orders[id];
@@ -101,7 +101,7 @@ auto Book::cancel(OrderId id, std::uint64_t quantity) -> expected<void> {
     return {};
 }
 
-auto Book::volume(Price price) const -> expected<std::uint64_t> {
+auto Engine::volume(Price price) const -> expected<std::uint64_t> {
     if (!asks.empty() && price >= asks.begin()->first) {
         if (auto it = asks.find(price); it != asks.end()) {
             return it->second.total_quantity;
@@ -116,13 +116,13 @@ auto Book::volume(Price price) const -> expected<std::uint64_t> {
     return 0;
 }
 
-auto Book::spread() const -> expected<std::pair<Price, Price>> {
+auto Engine::spread() const -> expected<std::pair<Price, Price>> {
     auto best_bid = bids.empty() ? 0 : bids.begin()->first;
     auto best_ask = asks.empty() ? 0 : asks.begin()->first;
     return std::pair{best_bid, best_ask};
 }
 
-void Book::execute(BuyOrder &order, OrderCallback on_fill) {
+void Engine::execute(BuyOrder &order, OrderCallback on_fill) {
     for (auto it = asks.begin();
          it != asks.end() && order.price >= it->first && order.quantity > 0;) {
         for (auto it_order = it->second.orders.begin();
@@ -155,7 +155,7 @@ void Book::execute(BuyOrder &order, OrderCallback on_fill) {
     }
 }
 
-void Book::execute(SellOrder &order, OrderCallback on_fill) {
+void Engine::execute(SellOrder &order, OrderCallback on_fill) {
     for (auto it = bids.begin();
          it != bids.end() && order.price <= it->first && order.quantity > 0;) {
         for (auto it_order = it->second.orders.begin();
