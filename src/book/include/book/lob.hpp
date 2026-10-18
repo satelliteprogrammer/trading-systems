@@ -22,7 +22,7 @@ class Engine {
 #if __cpp_lib_function_ref >= 202306L
     using OrderCallback = std::function_ref<void(OrderId, Order const &, Price, std::uint64_t)>;
 #else
-    using OrderCallback = std::function<void(OrderId, Order const &, Price, std::uint64_t)>;
+    using OrderCallback = std::function<void(OrderId, Order const &, Price, std::uint64_t)> const &;
 #endif
     static constexpr auto default_callback = [](OrderId, Order const &, Price,
                                                 std::uint64_t) -> void {};
