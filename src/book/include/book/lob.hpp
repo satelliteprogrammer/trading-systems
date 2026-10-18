@@ -34,19 +34,12 @@ class Engine {
     /// index directly into a preallocated arena.
     explicit Engine(std::size_t max_orders = default_max_orders);
 
-    /// Adds buy order to book.
+    /// Adds order to the book.
     ///
-    /// time: O(bids.size()) for first order at limit, O(1) for all others
-    ///
-    /// \return id assigned to the order (sequential, starting at 0)
-    auto add(BuyOrder, OrderCallback on_fill = default_callback) -> expected<OrderId>;
-
-    /// Adds sell order to book.
-    ///
-    /// time: O(asks.size()) for first order at limit, O(1) for all others
+    /// time: O(# price levels) for first order at limit, O(1) for all others
     ///
     /// \return id assigned to the order (sequential, starting at 0)
-    auto add(SellOrder, OrderCallback on_fill = default_callback) -> expected<OrderId>;
+    auto add(Order, OrderCallback on_fill = default_callback) -> expected<OrderId>;
 
     /// Cancels order by id. Returns true if order was found and cancelled.
     /// time: amortized O(1)
@@ -68,8 +61,11 @@ class Engine {
     auto spread() const -> expected<std::pair<Price, Price>>;
 
   private:
-    void execute(BuyOrder &order, OrderCallback on_fill);
-    void execute(SellOrder &order, OrderCallback on_fill);
+    /// Matches order against the opposite side's levels, best price first.
+    template <typename Levels> void execute(Order &order, Levels &opposite, OrderCallback on_fill);
+
+    /// Rests what remains of order on its own side's levels.
+    template <typename Levels> void rest(Order const &order, OrderId id, Levels &same);
 
     /// Order resting on the book, tagged with its book-assigned id.
     struct RestingOrder : Order {

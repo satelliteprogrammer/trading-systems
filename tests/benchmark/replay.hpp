@@ -11,7 +11,6 @@
 #include <format>
 #include <optional>
 #include <string_view>
-#include <type_traits>
 #include <unordered_map>
 #include <variant>
 #include <vector>
@@ -25,7 +24,7 @@ template <class... Ts> struct overloaded : Ts... {
 
 struct NewOrder {
     book::OrderId order_id{}; // external (exchange-assigned) id
-    std::variant<book::BuyOrder, book::SellOrder> order;
+    book::Order order;
 };
 
 struct PartialCancel {
@@ -44,7 +43,7 @@ struct Cancel {
 
 struct Execute {
     book::OrderId order_id{}; // external (exchange-assigned) id
-    std::variant<book::BuyOrder, book::SellOrder> order;
+    book::Order order;
     bool hidden{false};
 };
 
@@ -90,21 +89,17 @@ class LobsterReplay {
         return std::visit(
             overloaded{
                 [&](NewOrder const &new_order) -> std::expected<void, std::string_view> {
-                    return std::visit(
-                        [&](auto const &order) -> std::expected<void, std::string_view> {
-                            auto id = run(op, [&] -> auto { return book.add(order); });
-                            if (!id) {
-                                return std::unexpected{id.error()};
-                            }
-                            id_map_[new_order.order_id] = *id;
-                            return {};
-                        },
-                        new_order.order);
+                    auto id = run(op, [&] -> auto { return book.add(new_order.order); });
+                    if (!id) {
+                        return std::unexpected{id.error()};
+                    }
+                    id_map_[new_order.order_id] = *id;
+                    return {};
                 },
                 [&](PartialCancel const &partial_cancel) -> std::expected<void, std::string_view> {
                     return book_id(partial_cancel.order_id).and_then([&](auto id) -> auto {
-                        return run(op,
-                                   [&] -> auto { return book.cancel(id, partial_cancel.quantity); });
+                        return run(
+                            op, [&] -> auto { return book.cancel(id, partial_cancel.quantity); });
                     });
                 },
                 [&](Cancel const &cancel) -> std::expected<void, std::string_view> {
@@ -119,15 +114,10 @@ class LobsterReplay {
                     }
                     // LOBSTER EXECUTE messages tell us which resting order was
                     // executed. Use cancel to reduce that specific order.
-                    return std::visit(
-                        [&](auto const &order) -> std::expected<void, std::string_view> {
-                            return book_id(execute.order_id).and_then([&](auto id) -> auto {
-                                return run(op, [&] -> auto {
-                                    return book.cancel(id, order.quantity);
-                                });
-                            });
-                        },
-                        execute.order);
+                    return book_id(execute.order_id).and_then([&](auto id) -> auto {
+                        return run(op,
+                                   [&] -> auto { return book.cancel(id, execute.order.quantity); });
+                    });
                 },
                 [&](Halt const &) -> std::expected<void, std::string_view> { return {}; }},
             trade);
@@ -150,14 +140,8 @@ template <> struct std::formatter<ome::testing::NewOrder> {
     constexpr auto parse(std::format_parse_context &ctx) { return ctx.begin(); }
 
     auto format(ome::testing::NewOrder const &order, std::format_context &ctx) const {
-        return std::visit(
-            [&ctx, &order](auto const &ord) -> auto {
-                using T = std::decay_t<decltype(ord)>;
-                constexpr auto side = std::is_same_v<T, ome::book::BuyOrder> ? "BUY" : "SELL";
-                return std::format_to(ctx.out(), "NewOrder({} id={} price={} qty={})", side,
-                                      order.order_id, ord.price, ord.quantity);
-            },
-            order.order);
+        return std::format_to(ctx.out(), "NewOrder({} id={} price={} qty={})", order.order.side,
+                              order.order_id, order.order.price, order.order.quantity);
     }
 };
 
@@ -183,15 +167,9 @@ template <> struct std::formatter<ome::testing::Execute> {
     constexpr auto parse(std::format_parse_context &ctx) { return ctx.begin(); }
 
     auto format(ome::testing::Execute const &exec, std::format_context &ctx) const {
-        return std::visit(
-            [&ctx, &exec](auto const &ord) -> auto {
-                using T = std::decay_t<decltype(ord)>;
-                constexpr auto side = std::is_same_v<T, ome::book::BuyOrder> ? "BUY" : "SELL";
-                return std::format_to(ctx.out(), "Execute({}{} id={} price={} qty={})",
-                                      exec.hidden ? "HIDDEN " : "", side, exec.order_id, ord.price,
-                                      ord.quantity);
-            },
-            exec.order);
+        return std::format_to(ctx.out(), "Execute({}{} id={} price={} qty={})",
+                              exec.hidden ? "HIDDEN " : "", exec.order.side, exec.order_id,
+                              exec.order.price, exec.order.quantity);
     }
 };
 

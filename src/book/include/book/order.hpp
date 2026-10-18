@@ -18,16 +18,13 @@ struct LimitOrder {
     std::uint64_t quantity{};
 };
 
+enum class Side : std::uint8_t { Buy, Sell };
+
 struct Order : LimitOrder {
+    Side side{};
+    Price price{};
     Timestamp timestamp;
     std::array<char, 5> trader_id{}; // NOLINT(readability-magic-numbers)
-};
-
-struct BuyOrder : Order {
-    Price price{};
-};
-struct SellOrder : Order {
-    Price price{};
 };
 
 } // namespace ome::book
@@ -39,29 +36,18 @@ template <> struct std::formatter<ome::book::LimitOrder> : std::formatter<std::s
     }
 };
 
+template <> struct std::formatter<ome::book::Side> : std::formatter<std::string_view> {
+    template <typename FormatContext> auto format(ome::book::Side side, FormatContext &ctx) const {
+        return std::formatter<std::string_view>::format(
+            side == ome::book::Side::Buy ? "BUY" : "SELL", ctx);
+    }
+};
+
 template <> struct std::formatter<ome::book::Order> : std::formatter<std::string_view> {
     template <typename FormatContext>
     auto format(ome::book::Order const &order, FormatContext &ctx) const {
-        return std::format_to(ctx.out(), "{} timestamp={}",
+        return std::format_to(ctx.out(), "{} {} price={} timestamp={}", order.side,
                               std::format("{}", static_cast<const ome::book::LimitOrder &>(order)),
-                              order.timestamp);
-    }
-};
-
-template <> struct std::formatter<ome::book::BuyOrder> : std::formatter<std::string_view> {
-    template <typename FormatContext>
-    auto format(ome::book::BuyOrder const &order, FormatContext &ctx) const {
-        return std::format_to(ctx.out(), "BUY {} price={}",
-                              std::format("{}", static_cast<const ome::book::LimitOrder &>(order)),
-                              order.price);
-    }
-};
-
-template <> struct std::formatter<ome::book::SellOrder> : std::formatter<std::string_view> {
-    template <typename FormatContext>
-    auto format(ome::book::SellOrder const &order, FormatContext &ctx) const {
-        return std::format_to(ctx.out(), "SELL {} price={}",
-                              std::format("{}", static_cast<const ome::book::LimitOrder &>(order)),
-                              order.price);
+                              order.price, order.timestamp);
     }
 };

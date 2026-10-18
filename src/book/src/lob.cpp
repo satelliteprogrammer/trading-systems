@@ -8,36 +8,21 @@ namespace ome::book {
 
 Engine::Engine(std::size_t max_orders) : orders{max_orders} {}
 
-auto Engine::add(BuyOrder order, OrderCallback on_fill) -> expected<OrderId> {
+auto Engine::add(Order order, OrderCallback on_fill) -> expected<OrderId> {
     auto const id = next_id++;
     assert(id < orders.size());
 
-    execute(order, on_fill);
-    if (order.quantity > 0) {
-        auto price = order.price;
-        auto &bid = bids[price];
-        bid.total_quantity += order.quantity;
-        bid.orders.emplace_back(order, id);
-        orders[id] = OrderAtLimit{.price = price, .order_it = std::prev(bid.orders.end())};
+    switch (order.side) {
+    case Side::Buy:
+        execute(order, asks, on_fill);
+        rest(order, id, bids);
+        return id;
+    case Side::Sell:
+        execute(order, bids, on_fill);
+        rest(order, id, asks);
+        return id;
     }
-
-    return id;
-}
-
-auto Engine::add(SellOrder order, OrderCallback on_fill) -> expected<OrderId> {
-    auto const id = next_id++;
-    assert(id < orders.size());
-
-    execute(order, on_fill);
-    if (order.quantity > 0) {
-        auto price = order.price;
-        auto &ask = asks[price];
-        ask.total_quantity += order.quantity;
-        ask.orders.emplace_back(order, id);
-        orders[id] = OrderAtLimit{.price = price, .order_it = std::prev(ask.orders.end())};
-    }
-
-    return id;
+    std::unreachable();
 }
 
 auto Engine::cancel(OrderId id) -> expected<void> {
@@ -122,9 +107,15 @@ auto Engine::spread() const -> expected<std::pair<Price, Price>> {
     return std::pair{best_bid, best_ask};
 }
 
-void Engine::execute(BuyOrder &order, OrderCallback on_fill) {
-    for (auto it = asks.begin();
-         it != asks.end() && order.price >= it->first && order.quantity > 0;) {
+template <typename Levels>
+void Engine::execute(Order &order, Levels &opposite, OrderCallback on_fill) {
+    // levels are sorted best first, so a level crosses unless the order's price sorts before it
+    auto const crosses = [&](Price level) -> bool {
+        return !opposite.key_comp()(order.price, level);
+    };
+
+    for (auto it = opposite.begin();
+         it != opposite.end() && crosses(it->first) && order.quantity > 0;) {
         for (auto it_order = it->second.orders.begin();
              it_order != it->second.orders.end() && order.quantity > 0;) {
 
@@ -148,44 +139,21 @@ void Engine::execute(BuyOrder &order, OrderCallback on_fill) {
 
         if (it->second.orders.empty()) {
             // all orders consumed at this level, remove it
-            it = asks.erase(it);
+            it = opposite.erase(it);
         } else {
             ++it;
         }
     }
 }
 
-void Engine::execute(SellOrder &order, OrderCallback on_fill) {
-    for (auto it = bids.begin();
-         it != bids.end() && order.price <= it->first && order.quantity > 0;) {
-        for (auto it_order = it->second.orders.begin();
-             it_order != it->second.orders.end() && order.quantity > 0;) {
-
-            on_fill(it_order->order_id, *it_order, it->first,
-                    std::min(order.quantity, it_order->quantity));
-
-            if (it_order->quantity > order.quantity) {
-                it_order->quantity -= order.quantity;
-                it->second.total_quantity -= order.quantity;
-
-                order.quantity = 0;
-                break;
-            }
-
-            order.quantity -= it_order->quantity;
-            it->second.total_quantity -= it_order->quantity;
-
-            orders[it_order->order_id].order_it = std::list<RestingOrder>::iterator{};
-            it_order = it->second.orders.erase(it_order);
-        }
-
-        if (it->second.orders.empty()) {
-            // all orders consumed at this level, remove it
-            it = bids.erase(it);
-        } else {
-            ++it;
-        }
+template <typename Levels> void Engine::rest(Order const &order, OrderId id, Levels &same) {
+    if (order.quantity == 0) {
+        return;
     }
+    auto &level = same[order.price];
+    level.total_quantity += order.quantity;
+    level.orders.emplace_back(order, id);
+    orders[id] = OrderAtLimit{.price = order.price, .order_it = std::prev(level.orders.end())};
 }
 
 } // namespace ome::book

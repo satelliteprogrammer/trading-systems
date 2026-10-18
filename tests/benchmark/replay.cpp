@@ -93,10 +93,12 @@ auto message_to_trade(tools::lobster::Message const &msg) -> Trade {
         switch (msg.direction) {
         case tools::lobster::Direction::BUY:
             return NewOrder{.order_id = msg.order_id,
-                            .order = book::BuyOrder{{msg.size, msg.timestamp}, msg.price}};
+                            .order =
+                                book::Order{{msg.size}, book::Side::Buy, msg.price, msg.timestamp}};
         case tools::lobster::Direction::SELL:
-            return NewOrder{.order_id = msg.order_id,
-                            .order = book::SellOrder{{msg.size, msg.timestamp}, msg.price}};
+            return NewOrder{
+                .order_id = msg.order_id,
+                .order = book::Order{{msg.size}, book::Side::Sell, msg.price, msg.timestamp}};
         default:
             throw std::runtime_error{
                 std::format("Unknown direction type: {}", static_cast<int>(msg.direction))};
@@ -116,11 +118,13 @@ auto message_to_trade(tools::lobster::Message const &msg) -> Trade {
         switch (msg.direction) {
         case tools::lobster::Direction::BUY:
             return Execute{.order_id = msg.order_id,
-                           .order = book::SellOrder{{msg.size, msg.timestamp}, msg.price},
+                           .order =
+                               book::Order{{msg.size}, book::Side::Sell, msg.price, msg.timestamp},
                            .hidden = false};
         case tools::lobster::Direction::SELL:
             return Execute{.order_id = msg.order_id,
-                           .order = book::BuyOrder{{msg.size, msg.timestamp}, msg.price},
+                           .order =
+                               book::Order{{msg.size}, book::Side::Buy, msg.price, msg.timestamp},
                            .hidden = false};
         default:
             throw std::runtime_error{
@@ -131,11 +135,13 @@ auto message_to_trade(tools::lobster::Message const &msg) -> Trade {
         switch (msg.direction) {
         case tools::lobster::Direction::BUY:
             return Execute{.order_id = msg.order_id,
-                           .order = book::BuyOrder{{msg.size, msg.timestamp}, msg.price},
+                           .order =
+                               book::Order{{msg.size}, book::Side::Buy, msg.price, msg.timestamp},
                            .hidden = true};
         case tools::lobster::Direction::SELL:
             return Execute{.order_id = msg.order_id,
-                           .order = book::SellOrder{{msg.size, msg.timestamp}, msg.price},
+                           .order =
+                               book::Order{{msg.size}, book::Side::Sell, msg.price, msg.timestamp},
                            .hidden = true};
         }
 

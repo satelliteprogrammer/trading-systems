@@ -41,13 +41,9 @@ void destroy() { book = Engine{}; }
 // quantcup requires ids to start at 1; the book's ids start at 0, so shift by one.
 
 auto limit(t_order order) -> t_orderid {
-    if (is_ask(order.side) != 0) {
-        SellOrder sell{order.size, {}, std::to_array(order.trader), order.price};
-        return *book.add(sell, std::bind_front(&execute, order)) + 1;
-    }
-
-    BuyOrder buy{order.size, {}, std::to_array(order.trader), order.price};
-    return *book.add(buy, std::bind_front(&execute, order)) + 1;
+    auto const side = is_ask(order.side) != 0 ? Side::Sell : Side::Buy;
+    Order book_order{{order.size}, side, order.price, {}, std::to_array(order.trader)};
+    return *book.add(book_order, std::bind_front(&execute, order)) + 1;
 }
 
 void cancel(t_orderid orderid) { [[maybe_unused]] auto res = book.cancel(orderid - 1); }

@@ -10,49 +10,49 @@ namespace ome::book {
 TEST_CASE("Add assigns sequential ids starting at 0", "[lob]") {
     Engine book;
 
-    REQUIRE(book.add(BuyOrder{{10}, 100}) == 0);
-    REQUIRE(book.add(SellOrder{{5}, 110}) == 1);
+    REQUIRE(book.add(Order{{10}, Side::Buy, 100}) == 0);
+    REQUIRE(book.add(Order{{5}, Side::Sell, 110}) == 1);
 
     // fully matched orders still consume an id
-    REQUIRE(book.add(SellOrder{{10}, 100}) == 2);
-    REQUIRE(book.add(BuyOrder{{10}, 100}) == 3);
+    REQUIRE(book.add(Order{{10}, Side::Sell, 100}) == 2);
+    REQUIRE(book.add(Order{{10}, Side::Buy, 100}) == 3);
 }
 
 TEST_CASE("Add crossing spread behavior", "[lob]") {
     Engine book;
 
-    REQUIRE(book.add(BuyOrder{{10}, 100}));
+    REQUIRE(book.add(Order{{10}, Side::Buy, 100}));
 
     // sell at best bid executes against existing bid
-    REQUIRE(book.add(SellOrder{{5}, 100}));
+    REQUIRE(book.add(Order{{5}, Side::Sell, 100}));
     REQUIRE(book.volume(100) == 5);
 
     // sell below best bid executes against existing bid
-    REQUIRE(book.add(SellOrder{{5}, 99}));
+    REQUIRE(book.add(Order{{5}, Side::Sell, 99}));
     REQUIRE(book.volume(100) == 0);
 
     // ask above bid becomes resting ask
-    REQUIRE(book.add(SellOrder{{5}, 110}));
+    REQUIRE(book.add(Order{{5}, Side::Sell, 110}));
     REQUIRE(book.volume(110) == 5);
 
     // buy at ask executes against resting ask
-    REQUIRE(book.add(BuyOrder{{5}, 110}));
+    REQUIRE(book.add(Order{{5}, Side::Buy, 110}));
     REQUIRE(book.volume(110) == 0);
 
     // buy above empty book enters resting bid
-    REQUIRE(book.add(BuyOrder{{5}, 111}));
+    REQUIRE(book.add(Order{{5}, Side::Buy, 111}));
     REQUIRE(book.volume(111) == 5);
 }
 
 TEST_CASE("Add multiple orders at same price level", "[lob]") {
     Engine book;
 
-    REQUIRE(book.add(BuyOrder{{10}, 100}));
-    REQUIRE(book.add(BuyOrder{{15}, 100}));
+    REQUIRE(book.add(Order{{10}, Side::Buy, 100}));
+    REQUIRE(book.add(Order{{15}, Side::Buy, 100}));
     REQUIRE(book.volume(100) == 25);
 
-    REQUIRE(book.add(SellOrder{{5}, 110}));
-    REQUIRE(book.add(SellOrder{{7}, 110}));
+    REQUIRE(book.add(Order{{5}, Side::Sell, 110}));
+    REQUIRE(book.add(Order{{7}, Side::Sell, 110}));
     REQUIRE(book.volume(110) == 12);
 }
 
@@ -64,8 +64,8 @@ TEST_CASE("Cancel non-existent order", "[lob]") {
 TEST_CASE("Cancel one of multiple orders at same price", "[lob]") {
     Engine book;
 
-    auto first = book.add(BuyOrder{{10}, 100});
-    auto second = book.add(BuyOrder{{20}, 100});
+    auto first = book.add(Order{{10}, Side::Buy, 100});
+    auto second = book.add(Order{{20}, Side::Buy, 100});
     REQUIRE(book.volume(100) == 30);
 
     // cancel first order, volume should drop by 10
@@ -80,8 +80,8 @@ TEST_CASE("Cancel one of multiple orders at same price", "[lob]") {
 TEST_CASE("Cancel sell orders", "[lob]") {
     Engine book;
 
-    auto first = book.add(SellOrder{{10}, 110});
-    auto second = book.add(SellOrder{{5}, 110});
+    auto first = book.add(Order{{10}, Side::Sell, 110});
+    auto second = book.add(Order{{5}, Side::Sell, 110});
     REQUIRE(book.volume(110) == 15);
 
     REQUIRE(book.cancel(*first));
@@ -94,7 +94,7 @@ TEST_CASE("Cancel sell orders", "[lob]") {
 TEST_CASE("Partial cancel", "[lob]") {
     Engine book;
 
-    auto id = book.add(BuyOrder{{10}, 100});
+    auto id = book.add(Order{{10}, Side::Buy, 100});
     REQUIRE(book.volume(100) == 10);
 
     // cancel 3 of 10
@@ -114,7 +114,7 @@ TEST_CASE("Partial cancel non-existent order", "[lob]") {
 TEST_CASE("Partial cancel sell order", "[lob]") {
     Engine book;
 
-    auto id = book.add(SellOrder{{20}, 110});
+    auto id = book.add(Order{{20}, Side::Sell, 110});
     REQUIRE(book.volume(110) == 20);
 
     REQUIRE(book.cancel(*id, 8));
@@ -124,37 +124,37 @@ TEST_CASE("Partial cancel sell order", "[lob]") {
 TEST_CASE("Add buy order full match", "[lob]") {
     Engine book;
 
-    REQUIRE(book.add(SellOrder{{10}, 100}));
-    REQUIRE(book.add(BuyOrder{{10}, 100}));
+    REQUIRE(book.add(Order{{10}, Side::Sell, 100}));
+    REQUIRE(book.add(Order{{10}, Side::Buy, 100}));
     REQUIRE(book.volume(100) == 0);
 }
 
 TEST_CASE("Add buy order partial match", "[lob]") {
     Engine book;
 
-    REQUIRE(book.add(SellOrder{{5}, 100}));
-    REQUIRE(book.add(BuyOrder{{10}, 100}));
+    REQUIRE(book.add(Order{{5}, Side::Sell, 100}));
+    REQUIRE(book.add(Order{{10}, Side::Buy, 100}));
     REQUIRE(book.volume(100) == 5);
 }
 
 TEST_CASE("Add buy across multiple orders at same price", "[lob]") {
     Engine book;
 
-    REQUIRE(book.add(SellOrder{{5}, 100}));
-    REQUIRE(book.add(SellOrder{{5}, 100}));
+    REQUIRE(book.add(Order{{5}, Side::Sell, 100}));
+    REQUIRE(book.add(Order{{5}, Side::Sell, 100}));
     REQUIRE(book.volume(100) == 10);
 
-    REQUIRE(book.add(BuyOrder{{8}, 100}));
+    REQUIRE(book.add(Order{{8}, Side::Buy, 100}));
     REQUIRE(book.volume(100) == 2);
 }
 
 TEST_CASE("Add buy across multiple price levels", "[lob]") {
     Engine book;
 
-    REQUIRE(book.add(SellOrder{{5}, 100}));
-    REQUIRE(book.add(SellOrder{{5}, 105}));
+    REQUIRE(book.add(Order{{5}, Side::Sell, 100}));
+    REQUIRE(book.add(Order{{5}, Side::Sell, 105}));
 
-    REQUIRE(book.add(BuyOrder{{10}, 105}));
+    REQUIRE(book.add(Order{{10}, Side::Buy, 105}));
     REQUIRE(book.volume(100) == 0);
     REQUIRE(book.volume(105) == 0);
 }
@@ -162,37 +162,37 @@ TEST_CASE("Add buy across multiple price levels", "[lob]") {
 TEST_CASE("Add sell order full match", "[lob]") {
     Engine book;
 
-    REQUIRE(book.add(BuyOrder{{10}, 100}));
-    REQUIRE(book.add(SellOrder{{10}, 100}));
+    REQUIRE(book.add(Order{{10}, Side::Buy, 100}));
+    REQUIRE(book.add(Order{{10}, Side::Sell, 100}));
     REQUIRE(book.volume(100) == 0);
 }
 
 TEST_CASE("Add sell order partial match", "[lob]") {
     Engine book;
 
-    REQUIRE(book.add(BuyOrder{{5}, 100}));
-    REQUIRE(book.add(SellOrder{{10}, 100}));
+    REQUIRE(book.add(Order{{5}, Side::Buy, 100}));
+    REQUIRE(book.add(Order{{10}, Side::Sell, 100}));
     REQUIRE(book.volume(100) == 5);
 }
 
 TEST_CASE("Add sell across multiple bid orders", "[lob]") {
     Engine book;
 
-    REQUIRE(book.add(BuyOrder{{5}, 100}));
-    REQUIRE(book.add(BuyOrder{{5}, 100}));
+    REQUIRE(book.add(Order{{5}, Side::Buy, 100}));
+    REQUIRE(book.add(Order{{5}, Side::Buy, 100}));
     REQUIRE(book.volume(100) == 10);
 
-    REQUIRE(book.add(SellOrder{{7}, 100}));
+    REQUIRE(book.add(Order{{7}, Side::Sell, 100}));
     REQUIRE(book.volume(100) == 3);
 }
 
 TEST_CASE("Add sell across multiple price levels", "[lob]") {
     Engine book;
 
-    REQUIRE(book.add(BuyOrder{{5}, 105}));
-    REQUIRE(book.add(BuyOrder{{5}, 100}));
+    REQUIRE(book.add(Order{{5}, Side::Buy, 105}));
+    REQUIRE(book.add(Order{{5}, Side::Buy, 100}));
 
-    REQUIRE(book.add(SellOrder{{10}, 100}));
+    REQUIRE(book.add(Order{{10}, Side::Sell, 100}));
     REQUIRE(book.volume(105) == 0);
     REQUIRE(book.volume(100) == 0);
 }
@@ -200,9 +200,9 @@ TEST_CASE("Add sell across multiple price levels", "[lob]") {
 TEST_CASE("Add on empty book", "[lob]") {
     Engine book;
 
-    REQUIRE(book.add(BuyOrder{{10}, 100}));
+    REQUIRE(book.add(Order{{10}, Side::Buy, 100}));
     REQUIRE(book.volume(100) == 10);
-    REQUIRE(book.add(SellOrder{{10}, 100}));
+    REQUIRE(book.add(Order{{10}, Side::Sell, 100}));
     REQUIRE(book.volume(100) == 0);
 }
 
@@ -214,7 +214,7 @@ TEST_CASE("Volume edge cases", "[lob]") {
     REQUIRE(book.volume(0) == 0);
 
     // price with no orders
-    REQUIRE(book.add(BuyOrder{{10}, 100}));
+    REQUIRE(book.add(Order{{10}, Side::Buy, 100}));
     REQUIRE(book.volume(99) == 0);
     REQUIRE(book.volume(101) == 0);
 }
@@ -224,16 +224,16 @@ TEST_CASE("Book spread test", "[lob]") {
 
     REQUIRE(book.spread() == std::make_pair(0, 0));
 
-    REQUIRE(book.add(BuyOrder{{10}, 100}));
+    REQUIRE(book.add(Order{{10}, Side::Buy, 100}));
     REQUIRE(book.spread() == std::make_pair(100, 0));
 
-    REQUIRE(book.add(SellOrder{{10}, 110}));
+    REQUIRE(book.add(Order{{10}, Side::Sell, 110}));
     REQUIRE(book.spread() == std::make_pair(100, 110));
 
-    REQUIRE(book.add(BuyOrder{{10}, 105}));
+    REQUIRE(book.add(Order{{10}, Side::Buy, 105}));
     REQUIRE(book.spread() == std::make_pair(105, 110));
 
-    REQUIRE(book.add(SellOrder{{10}, 108}));
+    REQUIRE(book.add(Order{{10}, Side::Sell, 108}));
     REQUIRE(book.spread() == std::make_pair(105, 108));
 }
 
@@ -245,13 +245,13 @@ TEST_CASE("Sell exactly matches first bid, second bid at same level survives and
     // surviving order would then fail to find its price level and hit std::unreachable().
     Engine book;
 
-    REQUIRE(book.add(BuyOrder{{5}, 100}));
-    auto survivor = book.add(BuyOrder{{5}, 100});
+    REQUIRE(book.add(Order{{5}, Side::Buy, 100}));
+    auto survivor = book.add(Order{{5}, Side::Buy, 100});
     REQUIRE(book.volume(100) == 10);
 
     // sell exactly matches the first bid — inner loop exits with order.quantity == 0
     // but the second bid is still alive at level 100
-    REQUIRE(book.add(SellOrder{{5}, 100}));
+    REQUIRE(book.add(Order{{5}, Side::Sell, 100}));
     REQUIRE(book.volume(100) == 5);
 
     // level 100 must still exist; cancel must not crash via std::unreachable()
@@ -263,11 +263,11 @@ TEST_CASE("Buy exactly matches first ask, second ask at same level survives and 
           "[lob]") {
     Engine book;
 
-    REQUIRE(book.add(SellOrder{{5}, 100}));
-    auto survivor = book.add(SellOrder{{5}, 100});
+    REQUIRE(book.add(Order{{5}, Side::Sell, 100}));
+    auto survivor = book.add(Order{{5}, Side::Sell, 100});
     REQUIRE(book.volume(100) == 10);
 
-    REQUIRE(book.add(BuyOrder{{5}, 100}));
+    REQUIRE(book.add(Order{{5}, Side::Buy, 100}));
     REQUIRE(book.volume(100) == 5);
 
     REQUIRE(book.cancel(*survivor));
@@ -285,11 +285,11 @@ struct Fill {
 TEST_CASE("on_fill callback: full single fill", "[lob][callback]") {
     Engine book;
 
-    auto resting = book.add(SellOrder{{10}, 100});
+    auto resting = book.add(Order{{10}, Side::Sell, 100});
 
     std::vector<Fill> fills;
     REQUIRE(book.add(
-        BuyOrder{{10}, 100},
+        Order{{10}, Side::Buy, 100},
         [&](OrderId id, Order const & /*order*/, Price price, std::uint64_t quantity) -> void {
             fills.push_back({.order_id = id, .price = price, .quantity = quantity});
         }));
@@ -304,11 +304,11 @@ TEST_CASE("on_fill callback: full single fill", "[lob][callback]") {
 TEST_CASE("on_fill callback: partial fill of resting order", "[lob][callback]") {
     Engine book;
 
-    auto resting = book.add(SellOrder{{10}, 100});
+    auto resting = book.add(Order{{10}, Side::Sell, 100});
 
     std::vector<Fill> fills;
     REQUIRE(book.add(
-        BuyOrder{{4}, 100},
+        Order{{4}, Side::Buy, 100},
         [&](OrderId id, Order const & /*order*/, Price price, std::uint64_t quantity) -> void {
             fills.push_back({.order_id = id, .price = price, .quantity = quantity});
         }));
@@ -322,12 +322,12 @@ TEST_CASE("on_fill callback: partial fill of resting order", "[lob][callback]") 
 TEST_CASE("on_fill callback: multiple resting orders at same price level", "[lob][callback]") {
     Engine book;
 
-    auto first = book.add(SellOrder{{5}, 100});
-    auto second = book.add(SellOrder{{5}, 100});
+    auto first = book.add(Order{{5}, Side::Sell, 100});
+    auto second = book.add(Order{{5}, Side::Sell, 100});
 
     std::vector<Fill> fills;
     REQUIRE(book.add(
-        BuyOrder{{10}, 100},
+        Order{{10}, Side::Buy, 100},
         [&](OrderId id, Order const & /*order*/, Price price, std::uint64_t quantity) -> void {
             fills.push_back({.order_id = id, .price = price, .quantity = quantity});
         }));
@@ -343,12 +343,12 @@ TEST_CASE("on_fill callback: multiple resting orders at same price level", "[lob
 TEST_CASE("on_fill callback: fills across multiple price levels", "[lob][callback]") {
     Engine book;
 
-    auto first = book.add(SellOrder{{5}, 100});
-    auto second = book.add(SellOrder{{5}, 105});
+    auto first = book.add(Order{{5}, Side::Sell, 100});
+    auto second = book.add(Order{{5}, Side::Sell, 105});
 
     std::vector<Fill> fills;
     REQUIRE(book.add(
-        BuyOrder{{10}, 105},
+        Order{{10}, Side::Buy, 105},
         [&](OrderId id, Order const & /*order*/, Price price, std::uint64_t quantity) -> void {
             fills.push_back({.order_id = id, .price = price, .quantity = quantity});
         }));
@@ -365,12 +365,12 @@ TEST_CASE("on_fill callback: fills across multiple price levels", "[lob][callbac
 TEST_CASE("on_fill callback: sell side fills", "[lob][callback]") {
     Engine book;
 
-    auto first = book.add(BuyOrder{{5}, 100});
-    auto second = book.add(BuyOrder{{5}, 100});
+    auto first = book.add(Order{{5}, Side::Buy, 100});
+    auto second = book.add(Order{{5}, Side::Buy, 100});
 
     std::vector<Fill> fills;
     REQUIRE(book.add(
-        SellOrder{{7}, 100},
+        Order{{7}, Side::Sell, 100},
         [&](OrderId id, Order const & /*order*/, Price price, std::uint64_t quantity) -> void {
             fills.push_back({.order_id = id, .price = price, .quantity = quantity});
         }));
