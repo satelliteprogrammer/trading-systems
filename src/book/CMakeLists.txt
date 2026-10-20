@@ -2,6 +2,7 @@ add_library(
   book
   STATIC
     src/books/node/book.cpp
+    src/books/node/indexedbook.cpp
     src/engine.cpp
 )
 target_compile_features(book PUBLIC cxx_std_26)

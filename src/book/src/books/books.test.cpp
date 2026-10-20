@@ -1,6 +1,7 @@
 // Contract tests for concepts::OrderBook. Every book the Engine can run on goes in Books.
 
 #include "book/books/node/book.hpp"
+#include "book/books/node/indexedbook.hpp"
 
 #include <book/concepts.hpp>
 #include <book/order.hpp>
@@ -25,7 +26,7 @@ namespace ome::book::books {
 
 namespace {
 
-using Books = std::tuple<node::Book>;
+using Books = std::tuple<node::Book, node::IndexedBook>;
 
 using Catch::Matchers::IsEmpty;
 using Catch::Matchers::RangeEquals;
