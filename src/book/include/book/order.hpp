@@ -27,6 +27,10 @@ struct Order : LimitOrder {
     std::array<char, 5> trader_id{}; // NOLINT(readability-magic-numbers)
 };
 
+struct RestingOrder : Order {
+    OrderId order_id{};
+};
+
 } // namespace ome::book
 
 template <> struct std::formatter<ome::book::LimitOrder> : std::formatter<std::string_view> {
@@ -49,5 +53,13 @@ template <> struct std::formatter<ome::book::Order> : std::formatter<std::string
         return std::format_to(ctx.out(), "{} {} price={} timestamp={}", order.side,
                               std::format("{}", static_cast<const ome::book::LimitOrder &>(order)),
                               order.price, order.timestamp);
+    }
+};
+
+template <> struct std::formatter<ome::book::RestingOrder> : std::formatter<std::string_view> {
+    template <typename FormatContext>
+    auto format(ome::book::RestingOrder const &order, FormatContext &ctx) const {
+        return std::format_to(ctx.out(), "id={} {}", order.order_id,
+                              static_cast<const ome::book::Order &>(order));
     }
 };

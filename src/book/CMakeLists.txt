@@ -1,4 +1,9 @@
-add_library(book STATIC src/engine.cpp)
+add_library(
+  book
+  STATIC
+    src/books/node/book.cpp
+    src/engine.cpp
+)
 target_compile_features(book PUBLIC cxx_std_26)
 target_include_directories(
   book PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -6,7 +11,12 @@ target_include_directories(
 
 if(PROJECT_IS_TOP_LEVEL AND BUILD_TESTING)
 
-  add_executable(tests_api src/engine.test.cpp)
+  add_executable(
+    tests_api
+
+    src/books/books.test.cpp
+    src/engine.test.cpp
+  )
   target_compile_features(tests_api PUBLIC cxx_std_26)
   target_link_libraries(tests_api PRIVATE Catch2::Catch2WithMain book tools_testing)
   catch_discover_tests(tests_api)

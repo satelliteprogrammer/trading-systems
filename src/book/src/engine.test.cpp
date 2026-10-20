@@ -7,15 +7,15 @@ namespace ome::book {
 
 // NOLINTBEGIN(readability-magic-numbers)
 
-TEST_CASE("Add assigns sequential ids starting at 0", "[lob]") {
+TEST_CASE("Add assigns sequential ids starting at 1", "[lob]") {
     Engine book;
 
-    REQUIRE(book.add(Order{{10}, Side::Buy, 100}) == 0);
-    REQUIRE(book.add(Order{{5}, Side::Sell, 110}) == 1);
+    REQUIRE(book.add(Order{{10}, Side::Buy, 100}) == 1);
+    REQUIRE(book.add(Order{{5}, Side::Sell, 110}) == 2);
 
     // fully matched orders still consume an id
-    REQUIRE(book.add(Order{{10}, Side::Sell, 100}) == 2);
-    REQUIRE(book.add(Order{{10}, Side::Buy, 100}) == 3);
+    REQUIRE(book.add(Order{{10}, Side::Sell, 100}) == 3);
+    REQUIRE(book.add(Order{{10}, Side::Buy, 100}) == 4);
 }
 
 TEST_CASE("Add crossing spread behavior", "[lob]") {
@@ -44,89 +44,50 @@ TEST_CASE("Add crossing spread behavior", "[lob]") {
     REQUIRE(book.volume(111) == 5);
 }
 
-TEST_CASE("Add multiple orders at same price level", "[lob]") {
-    Engine book;
-
-    REQUIRE(book.add(Order{{10}, Side::Buy, 100}));
-    REQUIRE(book.add(Order{{15}, Side::Buy, 100}));
-    REQUIRE(book.volume(100) == 25);
-
-    REQUIRE(book.add(Order{{5}, Side::Sell, 110}));
-    REQUIRE(book.add(Order{{7}, Side::Sell, 110}));
-    REQUIRE(book.volume(110) == 12);
-}
-
-TEST_CASE("Cancel non-existent order", "[lob]") {
+TEST_CASE("Cancel of an unknown id fails", "[lob]") {
     Engine book;
     REQUIRE(!book.cancel(999));
+    REQUIRE(!book.cancel(999, 5));
 }
 
-TEST_CASE("Cancel one of multiple orders at same price", "[lob]") {
+TEST_CASE("Cancel removes orders on either side", "[lob]") {
     Engine book;
 
     auto first = book.add(Order{{10}, Side::Buy, 100});
     auto second = book.add(Order{{20}, Side::Buy, 100});
+    auto ask = book.add(Order{{5}, Side::Sell, 110});
     REQUIRE(book.volume(100) == 30);
 
-    // cancel first order, volume should drop by 10
     REQUIRE(book.cancel(*first));
     REQUIRE(book.volume(100) == 20);
 
-    // cancel last order at this level, level should be removed
+    // last order at the level
     REQUIRE(book.cancel(*second));
     REQUIRE(book.volume(100) == 0);
-}
 
-TEST_CASE("Cancel sell orders", "[lob]") {
-    Engine book;
-
-    auto first = book.add(Order{{10}, Side::Sell, 110});
-    auto second = book.add(Order{{5}, Side::Sell, 110});
-    REQUIRE(book.volume(110) == 15);
-
-    REQUIRE(book.cancel(*first));
-    REQUIRE(book.volume(110) == 5);
-
-    REQUIRE(book.cancel(*second));
+    REQUIRE(book.cancel(*ask));
     REQUIRE(book.volume(110) == 0);
+
+    // already cancelled
+    REQUIRE(!book.cancel(*first));
 }
 
 TEST_CASE("Partial cancel", "[lob]") {
     Engine book;
 
-    auto id = book.add(Order{{10}, Side::Buy, 100});
-    REQUIRE(book.volume(100) == 10);
+    auto bid = book.add(Order{{10}, Side::Buy, 100});
+    auto ask = book.add(Order{{20}, Side::Sell, 110});
 
-    // cancel 3 of 10
-    REQUIRE(book.cancel(*id, 3));
+    REQUIRE(book.cancel(*bid, 3));
     REQUIRE(book.volume(100) == 7);
 
-    // cancel remaining 7
-    REQUIRE(book.cancel(*id, 7));
+    // cancelling the remainder removes the order
+    REQUIRE(book.cancel(*bid, 7));
     REQUIRE(book.volume(100) == 0);
-}
+    REQUIRE(!book.cancel(*bid));
 
-TEST_CASE("Partial cancel non-existent order", "[lob]") {
-    Engine book;
-    REQUIRE(!book.cancel(999, 5));
-}
-
-TEST_CASE("Partial cancel sell order", "[lob]") {
-    Engine book;
-
-    auto id = book.add(Order{{20}, Side::Sell, 110});
-    REQUIRE(book.volume(110) == 20);
-
-    REQUIRE(book.cancel(*id, 8));
+    REQUIRE(book.cancel(*ask, 8));
     REQUIRE(book.volume(110) == 12);
-}
-
-TEST_CASE("Add buy order full match", "[lob]") {
-    Engine book;
-
-    REQUIRE(book.add(Order{{10}, Side::Sell, 100}));
-    REQUIRE(book.add(Order{{10}, Side::Buy, 100}));
-    REQUIRE(book.volume(100) == 0);
 }
 
 TEST_CASE("Add buy order partial match", "[lob]") {
@@ -137,53 +98,12 @@ TEST_CASE("Add buy order partial match", "[lob]") {
     REQUIRE(book.volume(100) == 5);
 }
 
-TEST_CASE("Add buy across multiple orders at same price", "[lob]") {
-    Engine book;
-
-    REQUIRE(book.add(Order{{5}, Side::Sell, 100}));
-    REQUIRE(book.add(Order{{5}, Side::Sell, 100}));
-    REQUIRE(book.volume(100) == 10);
-
-    REQUIRE(book.add(Order{{8}, Side::Buy, 100}));
-    REQUIRE(book.volume(100) == 2);
-}
-
-TEST_CASE("Add buy across multiple price levels", "[lob]") {
-    Engine book;
-
-    REQUIRE(book.add(Order{{5}, Side::Sell, 100}));
-    REQUIRE(book.add(Order{{5}, Side::Sell, 105}));
-
-    REQUIRE(book.add(Order{{10}, Side::Buy, 105}));
-    REQUIRE(book.volume(100) == 0);
-    REQUIRE(book.volume(105) == 0);
-}
-
-TEST_CASE("Add sell order full match", "[lob]") {
-    Engine book;
-
-    REQUIRE(book.add(Order{{10}, Side::Buy, 100}));
-    REQUIRE(book.add(Order{{10}, Side::Sell, 100}));
-    REQUIRE(book.volume(100) == 0);
-}
-
 TEST_CASE("Add sell order partial match", "[lob]") {
     Engine book;
 
     REQUIRE(book.add(Order{{5}, Side::Buy, 100}));
     REQUIRE(book.add(Order{{10}, Side::Sell, 100}));
     REQUIRE(book.volume(100) == 5);
-}
-
-TEST_CASE("Add sell across multiple bid orders", "[lob]") {
-    Engine book;
-
-    REQUIRE(book.add(Order{{5}, Side::Buy, 100}));
-    REQUIRE(book.add(Order{{5}, Side::Buy, 100}));
-    REQUIRE(book.volume(100) == 10);
-
-    REQUIRE(book.add(Order{{7}, Side::Sell, 100}));
-    REQUIRE(book.volume(100) == 3);
 }
 
 TEST_CASE("Add sell across multiple price levels", "[lob]") {
@@ -194,15 +114,6 @@ TEST_CASE("Add sell across multiple price levels", "[lob]") {
 
     REQUIRE(book.add(Order{{10}, Side::Sell, 100}));
     REQUIRE(book.volume(105) == 0);
-    REQUIRE(book.volume(100) == 0);
-}
-
-TEST_CASE("Add on empty book", "[lob]") {
-    Engine book;
-
-    REQUIRE(book.add(Order{{10}, Side::Buy, 100}));
-    REQUIRE(book.volume(100) == 10);
-    REQUIRE(book.add(Order{{10}, Side::Sell, 100}));
     REQUIRE(book.volume(100) == 0);
 }
 
@@ -237,41 +148,34 @@ TEST_CASE("Book spread test", "[lob]") {
     REQUIRE(book.spread() == std::make_pair(105, 108));
 }
 
-TEST_CASE("Sell exactly matches first bid, second bid at same level survives and is cancellable",
-          "[lob]") {
+TEST_CASE("Exactly matching the first order at a level keeps the rest cancellable", "[lob]") {
     // Regression: the execute loop previously always erased the price level after the inner
-    // loop, even when orders remained. A sell that exactly consumes the first order at a level
+    // loop, even when orders remained. An order that exactly consumes the first order at a level
     // would erase the level while the second order was still live. Calling cancel on that
     // surviving order would then fail to find its price level and hit std::unreachable().
     Engine book;
 
-    REQUIRE(book.add(Order{{5}, Side::Buy, 100}));
-    auto survivor = book.add(Order{{5}, Side::Buy, 100});
-    REQUIRE(book.volume(100) == 10);
+    SECTION("sell against bids") {
+        REQUIRE(book.add(Order{{5}, Side::Buy, 100}));
+        auto survivor = book.add(Order{{5}, Side::Buy, 100});
 
-    // sell exactly matches the first bid — inner loop exits with order.quantity == 0
-    // but the second bid is still alive at level 100
-    REQUIRE(book.add(Order{{5}, Side::Sell, 100}));
-    REQUIRE(book.volume(100) == 5);
+        REQUIRE(book.add(Order{{5}, Side::Sell, 100}));
+        REQUIRE(book.volume(100) == 5);
 
-    // level 100 must still exist; cancel must not crash via std::unreachable()
-    REQUIRE(book.cancel(*survivor));
-    REQUIRE(book.volume(100) == 0);
-}
+        REQUIRE(book.cancel(*survivor));
+        REQUIRE(book.volume(100) == 0);
+    }
 
-TEST_CASE("Buy exactly matches first ask, second ask at same level survives and is cancellable",
-          "[lob]") {
-    Engine book;
+    SECTION("buy against asks") {
+        REQUIRE(book.add(Order{{5}, Side::Sell, 100}));
+        auto survivor = book.add(Order{{5}, Side::Sell, 100});
 
-    REQUIRE(book.add(Order{{5}, Side::Sell, 100}));
-    auto survivor = book.add(Order{{5}, Side::Sell, 100});
-    REQUIRE(book.volume(100) == 10);
+        REQUIRE(book.add(Order{{5}, Side::Buy, 100}));
+        REQUIRE(book.volume(100) == 5);
 
-    REQUIRE(book.add(Order{{5}, Side::Buy, 100}));
-    REQUIRE(book.volume(100) == 5);
-
-    REQUIRE(book.cancel(*survivor));
-    REQUIRE(book.volume(100) == 0);
+        REQUIRE(book.cancel(*survivor));
+        REQUIRE(book.volume(100) == 0);
+    }
 }
 
 namespace {

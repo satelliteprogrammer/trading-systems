@@ -1,15 +1,12 @@
 #pragma once
 
+#include "books/node/book.hpp"
 #include "order.hpp"
 
 #include <cstdint>
 #include <expected>
 #include <functional>
-#include <list>
-#include <map>
 #include <string_view>
-#include <unordered_map>
-#include <vector>
 
 namespace ome::book {
 
@@ -62,33 +59,10 @@ class Engine {
 
   private:
     /// Matches order against the opposite side's levels, best price first.
-    template <typename Levels> void execute(Order &order, Levels &opposite, OrderCallback on_fill);
+    template <Side> void execute(Order &order, OrderCallback on_fill);
 
-    /// Rests what remains of order on its own side's levels.
-    template <typename Levels> void rest(Order const &order, OrderId id, Levels &same);
-
-    /// Order resting on the book, tagged with its book-assigned id.
-    struct RestingOrder : Order {
-        OrderId order_id{};
-    };
-
-    struct OrdersAtLimit {
-        // Limit limit;
-        std::list<RestingOrder> orders;
-        std::uint64_t total_quantity{0};
-    };
-
-    std::map<Price, OrdersAtLimit, std::greater<>> bids;
-    std::map<Price, OrdersAtLimit, std::less<>> asks;
-
-    struct OrderAtLimit {
-        Price price{};
-        std::list<RestingOrder>::iterator order_it;
-    };
-
-    std::vector<OrderAtLimit> orders; // arena, index is order_id
-
-    OrderId next_id{0};
+    books::node::Book book;
+    OrderId cur_order_id_{0};
 };
 
 } // namespace ome::book
