@@ -15,7 +15,7 @@
 // newer libc++ no longer defines; opt out of those declarations.
 #define META_NO_STD_FORWARD_DECLARATIONS
 #include <range/v3/view/concat.hpp>
-namespace std::ranges::views {
+namespace std::ranges::views { // NOLINT(bugprone-std-namespace-modification)
 using ::ranges::views::concat;
 } // namespace std::ranges::views
 #else

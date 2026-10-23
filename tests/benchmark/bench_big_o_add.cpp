@@ -1,5 +1,7 @@
 #include "replay.hpp"
 
+#include <book/engine.hpp>
+
 #include <chrono>
 #include <cstddef>
 #include <cstdlib>
@@ -30,11 +32,11 @@ auto main(int argc, char *argv[]) -> int {
         std::ofstream results{"results.csv"};
 
         auto timed = [&](std::size_t op, auto const &call) -> auto {
-            auto start = chrono::high_resolution_clock::now();
+            auto const start = chrono::high_resolution_clock::now();
             auto ans = call();
-            auto stop = chrono::high_resolution_clock::now();
+            auto const stop = chrono::high_resolution_clock::now();
 
-            auto delta = stop - start;
+            auto const delta = stop - start;
             std::println(results, "{},{}", op, delta.count());
 
             return ans;

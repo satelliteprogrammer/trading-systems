@@ -1,6 +1,9 @@
 #include "synthetics.hpp"
-#include "lobster/ranges.hpp"
 
+#include <lobster/ranges.hpp>
+#include <lobster/types.hpp>
+
+#include <catch2/catch_message.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
@@ -16,7 +19,7 @@ namespace {
 // NOLINTBEGIN(readability-magic-numbers)
 
 auto ts(double seconds) -> Timestamp {
-    auto since_midnight =
+    auto const since_midnight =
         chrono::duration_cast<chrono::nanoseconds>(chrono::duration<double>{seconds});
     return chrono::sys_days{LobsterDay} + since_midnight;
 }
@@ -24,13 +27,15 @@ auto ts(double seconds) -> Timestamp {
 // an original message surviving as an orphan; line is the 1-based message line
 auto orphan(MessageLine line, double time, Type type, OrderId id, Size size, Price price,
             Direction direction) -> Message {
-    return {.index = line - 1,
-            .timestamp = ts(time),
-            .type = type,
-            .order_id = id,
-            .size = size,
-            .price = price,
-            .direction = direction};
+    return {
+        .index = line - 1,
+        .timestamp = ts(time),
+        .type = type,
+        .order_id = id,
+        .size = size,
+        .price = price,
+        .direction = direction,
+    };
 }
 
 auto snap(MessageLine line, double time, Size size, Direction direction) -> PriceSnapshot {
@@ -57,7 +62,7 @@ struct NextOrderIdByLine {
                 return ids[i];
             }
         }
-        auto last = ranges::find_if(ids | views::reverse, [](OrderId id) { return id != 0; });
+        auto const last = ranges::find_if(ids | views::reverse, [](OrderId id) { return id != 0; });
         return *last + 1;
     }
 };
@@ -77,11 +82,13 @@ TEST_CASE("Fully visible stream needs only a fake for the pre-open book", "[synt
     // the ask at 10100 rests in the book from the open with no recorded
     // creation: a fake order fills it. Order 1000 still holds 6 unaccounted
     // shares, but its level never leaves the visible depth, so it is untouched.
-    NextOrderIdByLine next{.ids = {1000, 1001, 0, 0}};
-    Orphans orphans{
+    NextOrderIdByLine const next{.ids = {1000, 1001, 0, 0}};
+    Orphans const orphans{
+        .only_referenced = {},
         .only_created = {orphan(1, 34201, Type::ORDER, 1000, 6, 10000, Direction::BUY)},
+        .partially_deleted = {},
     };
-    Levels levels{
+    Levels const levels{
         {10000, {view(snap(1, 34201, 0, Direction::BUY), snap(4, 34204, 6, Direction::BUY))}},
         {10100, {view(snap(1, 34201, 5, Direction::SELL), snap(4, 34204, 5, Direction::SELL))}},
     };
@@ -102,16 +109,25 @@ TEST_CASE("Hidden growth mints a fake order, hidden shrink cancels it back", "[s
     // 10000 leaves the visible depth holding 10 and returns with 14 (4 grew
     // hidden), then leaves with 14 and returns with 6 (8 shrank hidden): the
     // fake 4 and part of order 1000 must be cancelled
-    NextOrderIdByLine next{.ids = {1000, 1001, 1002, 0, 1003, 0}};
-    Orphans orphans{
-        .only_created = {orphan(1, 34201, Type::ORDER, 1000, 10, 10000, Direction::BUY),
-                         orphan(2, 34202, Type::ORDER, 1001, 20, 10100, Direction::BUY)},
+    NextOrderIdByLine const next{.ids = {1000, 1001, 1002, 0, 1003, 0}};
+    Orphans const orphans{
+        .only_referenced = {},
+        .only_created =
+            {
+                orphan(1, 34201, Type::ORDER, 1000, 10, 10000, Direction::BUY),
+                orphan(2, 34202, Type::ORDER, 1001, 20, 10100, Direction::BUY),
+            },
+        .partially_deleted = {},
     };
-    Levels levels{
-        {10000,
-         {view(snap(1, 34201, 0, Direction::BUY), snap(3, 34203, 10, Direction::BUY)),
-          view(snap(4, 34204, 14, Direction::BUY), snap(5, 34205, 14, Direction::BUY)),
-          view(snap(6, 34206, 6, Direction::BUY), snap(6, 34206, 6, Direction::BUY))}},
+    Levels const levels{
+        {
+            10000,
+            {
+                view(snap(1, 34201, 0, Direction::BUY), snap(3, 34203, 10, Direction::BUY)),
+                view(snap(4, 34204, 14, Direction::BUY), snap(5, 34205, 14, Direction::BUY)),
+                view(snap(6, 34206, 6, Direction::BUY), snap(6, 34206, 6, Direction::BUY)),
+            },
+        },
         {10100, {view(snap(1, 34201, 0, Direction::BUY), snap(6, 34206, 20, Direction::BUY))}},
     };
 
@@ -141,12 +157,13 @@ TEST_CASE("Orphan reference is fulfilled by a synthetic order in its id window",
     // order 1005 was created while 10000 was outside the visible depth: only
     // its DELETE on line 4 is recorded. Its id falls in the id window of the
     // hidden stretch before 10000's only view, so the creation lands there.
-    NextOrderIdByLine next{.ids = {1000, 1010, 0, 0}};
-    Orphans orphans{
+    NextOrderIdByLine const next{.ids = {1000, 1010, 0, 0}};
+    Orphans const orphans{
         .only_referenced = {orphan(4, 34204, Type::DELETE, 1005, 15, 10000, Direction::BUY)},
         .only_created = {orphan(1, 34201, Type::ORDER, 1000, 10, 10100, Direction::BUY)},
+        .partially_deleted = {},
     };
-    Levels levels{
+    Levels const levels{
         {10000, {view(snap(3, 34203, 15, Direction::BUY), snap(4, 34204, 15, Direction::BUY))}},
         {10100, {view(snap(1, 34201, 0, Direction::BUY), snap(4, 34204, 10, Direction::BUY))}},
     };
@@ -167,14 +184,20 @@ TEST_CASE("Hidden partial deletion is cancelled before the real delete", "[synth
     // for 100: the residual 100 was cancelled while 10000 was hidden between
     // its two views (lines 4-5). The residual must be a CANCEL inside that
     // window so the real DELETE still finds the order.
-    NextOrderIdByLine next{.ids = {1000, 1001, 1002, 1003, 0, 0}};
-    Orphans orphans{
+    NextOrderIdByLine const next{.ids = {1000, 1001, 1002, 1003, 0, 0}};
+    Orphans const orphans{
+        .only_referenced = {},
+        .only_created = {},
         .partially_deleted = {orphan(2, 34202, Type::ORDER, 1001, 100, 10000, Direction::BUY)},
     };
-    Levels levels{
-        {10000,
-         {view(snap(1, 34201, 0, Direction::BUY), snap(4, 34204, 200, Direction::BUY)),
-          view(snap(5, 34205, 100, Direction::BUY), snap(6, 34206, 0, Direction::BUY))}},
+    Levels const levels{
+        {
+            10000,
+            {
+                view(snap(1, 34201, 0, Direction::BUY), snap(4, 34204, 200, Direction::BUY)),
+                view(snap(5, 34205, 100, Direction::BUY), snap(6, 34206, 0, Direction::BUY)),
+            },
+        },
     };
 
     auto synthetics = Synthetics{orphans, levels, next}();
@@ -192,17 +215,25 @@ TEST_CASE("Referenced orders are consumed by cancel, never by delete", "[synthet
     // hidden shrink of 100 at 10100 (lines 4-5) must take order 1001's single
     // unaccounted share via CANCEL: a synthetic DELETE would wipe the 199
     // shares the real CANCEL on line 6 still needs
-    NextOrderIdByLine next{.ids = {1000, 1001, 1003, 1004, 0, 0}};
-    Orphans orphans{
+    NextOrderIdByLine const next{.ids = {1000, 1001, 1003, 1004, 0, 0}};
+    Orphans const orphans{
+        .only_referenced = {},
         .only_created =
-            {// 199 of order 1001's 200 shares are still referenced later
-             orphan(2, 34202, Type::ORDER, 1001, 1, 10100, Direction::BUY),
-             orphan(3, 34203, Type::ORDER, 1003, 99, 10100, Direction::BUY)},
+            {
+                // 199 of order 1001's 200 shares are still referenced later
+                orphan(2, 34202, Type::ORDER, 1001, 1, 10100, Direction::BUY),
+                orphan(3, 34203, Type::ORDER, 1003, 99, 10100, Direction::BUY),
+            },
+        .partially_deleted = {},
     };
-    Levels levels{
-        {10100,
-         {view(snap(1, 34201, 0, Direction::BUY), snap(4, 34204, 299, Direction::BUY)),
-          view(snap(5, 34205, 199, Direction::BUY), snap(6, 34206, 0, Direction::BUY))}},
+    Levels const levels{
+        {
+            10100,
+            {
+                view(snap(1, 34201, 0, Direction::BUY), snap(4, 34204, 299, Direction::BUY)),
+                view(snap(5, 34205, 199, Direction::BUY), snap(6, 34206, 0, Direction::BUY)),
+            },
+        },
     };
 
     auto synthetics = Synthetics{orphans, levels, next}();
@@ -226,12 +257,13 @@ TEST_CASE("Pre-open order visible at the open is created at market open", "[synt
     // id 55 predates the first recorded order (1000) and is referenced during
     // 10200's opening view: its 300 shares are the ask level standing in the
     // opening book
-    NextOrderIdByLine next{.ids = {1000, 0}};
-    Orphans orphans{
+    NextOrderIdByLine const next{.ids = {1000, 0}};
+    Orphans const orphans{
         .only_referenced = {orphan(2, 34202, Type::EXECUTE, 55, 300, 10200, Direction::SELL)},
         .only_created = {orphan(1, 34201, Type::ORDER, 1000, 10, 10100, Direction::BUY)},
+        .partially_deleted = {},
     };
-    Levels levels{
+    Levels const levels{
         {10100, {view(snap(1, 34201, 0, Direction::BUY), snap(2, 34202, 10, Direction::BUY))}},
         {10200, {view(snap(1, 34201, 300, Direction::SELL), snap(2, 34202, 0, Direction::SELL))}},
     };
@@ -253,15 +285,20 @@ TEST_CASE("Pre-open id appearing mid-day is created before its reference view, n
     // and order 70 — carrying a pre-open id — arrives with 40. Creating order
     // 70 at the open would break the book while 9900 shows 25: it must be
     // created in the hidden window right before its reference view (lines 2-3).
-    NextOrderIdByLine next{.ids = {1000, 1001, 0, 0}};
-    Orphans orphans{
+    NextOrderIdByLine const next{.ids = {1000, 1001, 0, 0}};
+    Orphans const orphans{
         .only_referenced = {orphan(4, 34204, Type::DELETE, 70, 40, 9900, Direction::BUY)},
         .only_created = {orphan(1, 34201, Type::ORDER, 1000, 10, 10000, Direction::BUY)},
+        .partially_deleted = {},
     };
-    Levels levels{
-        {9900,
-         {view(snap(1, 34201, 25, Direction::BUY), snap(2, 34202, 25, Direction::BUY)),
-          view(snap(3, 34203, 40, Direction::BUY), snap(4, 34204, 40, Direction::BUY))}},
+    Levels const levels{
+        {
+            9900,
+            {
+                view(snap(1, 34201, 25, Direction::BUY), snap(2, 34202, 25, Direction::BUY)),
+                view(snap(3, 34203, 40, Direction::BUY), snap(4, 34204, 40, Direction::BUY)),
+            },
+        },
         {10000, {view(snap(1, 34201, 0, Direction::BUY), snap(4, 34204, 10, Direction::BUY))}},
     };
 
@@ -292,13 +329,17 @@ TEST_CASE("Orphan referenced during a view still open at the end of the data", "
     // 10100 never leaves the visible depth, so its only view is closed by the
     // end of the data (exit on the last line); the pre-open id 77 referenced
     // on that final line must still be matched to it
-    NextOrderIdByLine next{.ids = {1000, 1010, 0}};
-    Orphans orphans{
+    NextOrderIdByLine const next{.ids = {1000, 1010, 0}};
+    Orphans const orphans{
         .only_referenced = {orphan(3, 34203, Type::CANCEL, 77, 4, 10100, Direction::SELL)},
-        .only_created = {orphan(1, 34201, Type::ORDER, 1000, 10, 10000, Direction::BUY),
-                         orphan(2, 34202, Type::ORDER, 1010, 20, 10000, Direction::BUY)},
+        .only_created =
+            {
+                orphan(1, 34201, Type::ORDER, 1000, 10, 10000, Direction::BUY),
+                orphan(2, 34202, Type::ORDER, 1010, 20, 10000, Direction::BUY),
+            },
+        .partially_deleted = {},
     };
-    Levels levels{
+    Levels const levels{
         {10000, {view(snap(1, 34201, 0, Direction::BUY), snap(3, 34203, 30, Direction::BUY))}},
         {10100, {view(snap(1, 34201, 5, Direction::SELL), snap(3, 34203, 1, Direction::SELL))}},
     };
@@ -321,12 +362,16 @@ TEST_CASE("Orphan referenced during a view still open at the end of the data", "
 TEST_CASE("Hidden shrink with nothing left to cancel is an error", "[synthetics]") {
     // 10000 loses 5 hidden shares between its views but no fake or recorded
     // order is alive to absorb the shrink
-    NextOrderIdByLine next{.ids = {1000, 0, 0}};
-    Orphans orphans{};
-    Levels levels{
-        {10000,
-         {view(snap(1, 34201, 0, Direction::BUY), snap(2, 34202, 10, Direction::BUY)),
-          view(snap(3, 34203, 5, Direction::BUY), snap(3, 34203, 5, Direction::BUY))}},
+    NextOrderIdByLine const next{.ids = {1000, 0, 0}};
+    Orphans const orphans{};
+    Levels const levels{
+        {
+            10000,
+            {
+                view(snap(1, 34201, 0, Direction::BUY), snap(2, 34202, 10, Direction::BUY)),
+                view(snap(3, 34203, 5, Direction::BUY), snap(3, 34203, 5, Direction::BUY)),
+            },
+        },
     };
 
     REQUIRE_THROWS_AS((Synthetics{orphans, levels, next}), SyntheticsError);

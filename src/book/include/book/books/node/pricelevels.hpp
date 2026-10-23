@@ -6,6 +6,7 @@
 #include <functional>
 #include <list>
 #include <map>
+#include <utility>
 
 namespace ome::book::books::node {
 
@@ -24,6 +25,7 @@ class PriceCompare {
         case Side::Sell:
             return lhs < rhs;
         }
+        std::unreachable();
     }
 
   private:

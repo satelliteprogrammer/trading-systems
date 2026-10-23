@@ -1,17 +1,22 @@
 #include "lobster/reconstructor.hpp"
-#include "lobster/ranges.hpp"
 
+#include <lobster/ranges.hpp>
+#include <lobster/types.hpp>
+
+#include <catch2/catch_message.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
-#include <chrono>
+#include <cstddef>
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <iterator>
 #include <map>
 #include <random>
 #include <ranges>
 #include <string>
+#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -57,7 +62,8 @@ struct TempLobsterFiles {
         messages = dir / "messages.csv";
         orderbook = dir / "orderbook.csv";
 
-        auto write = [](std::filesystem::path const &path, std::vector<std::string> const &lines) {
+        auto const write = [](std::filesystem::path const &path,
+                              std::vector<std::string> const &lines) {
             std::ofstream file{path};
             for (auto const &line : lines) {
                 file << line << '\n';
@@ -99,7 +105,7 @@ struct Reconstruction {
 
 auto reconstruct(std::vector<std::string> const &message_lines,
                  std::vector<std::string> const &orderbook_lines) -> Reconstruction {
-    TempLobsterFiles files{message_lines, orderbook_lines};
+    TempLobsterFiles const files{message_lines, orderbook_lines};
     Reconstructor reconstructor{LobsterData{files.messages, files.orderbook}};
     auto messages = std::move(reconstructor).messages();
     auto expected = std::move(reconstructor).expected_orderbooks();
@@ -113,7 +119,7 @@ auto reconstruct(std::vector<std::string> const &message_lines,
 void replay_and_validate(Reconstruction const &reconstruction) {
     std::map<OrderId, std::pair<Price, Size>> live;
 
-    auto volume = [&](Price price) -> Size {
+    auto const volume = [&](Price price) -> Size {
         Size total = 0;
         for (auto const &[order_price, size] : live | views::values) {
             if (order_price == price) {
@@ -185,20 +191,23 @@ TEST_CASE("Reconstructor merges synthetics into the recorded stream in order", "
             msg(34204, Type::DELETE, 70, 40, 9900, Direction::BUY),
         },
         {
-            book({{10300, 7}}, {{10000, 10}, {9900, 25}}),
-            book({{10300, 7}}, {{10100, 3}, {10000, 10}}),
-            book({{10300, 7}}, {{10000, 10}, {9900, 40}}),
-            book({{10300, 7}}, {{10000, 10}}),
+            book({{.price = 10300, .size = 7}},
+                 {{.price = 10000, .size = 10}, {.price = 9900, .size = 25}}),
+            book({{.price = 10300, .size = 7}},
+                 {{.price = 10100, .size = 3}, {.price = 10000, .size = 10}}),
+            book({{.price = 10300, .size = 7}},
+                 {{.price = 10000, .size = 10}, {.price = 9900, .size = 40}}),
+            book({{.price = 10300, .size = 7}}, {{.price = 10000, .size = 10}}),
         });
 
-    auto order_70 = reconstruction.position_of_synthetic(
-        [](Message const &m) { return m.type == Type::ORDER && m.order_id == 70; });
+    auto const order_70 = reconstruction.position_of_synthetic(
+        [](Message const &msg) -> bool { return msg.type == Type::ORDER && msg.order_id == 70; });
     CHECK(order_70 > reconstruction.position_of_line(2));
     CHECK(order_70 < reconstruction.position_of_line(3));
 
     // the pre-open 25 shares get a fake order at the open, cancelled while hidden
-    auto fake = ranges::find_if(reconstruction.messages, [](Message const &m) {
-        return !m.index && m.type == Type::ORDER && m.price == 9900 && m.size == 25;
+    auto fake = ranges::find_if(reconstruction.messages, [](Message const &msg) -> bool {
+        return !msg.index && msg.type == Type::ORDER && msg.price == 9900 && msg.size == 25;
     });
     REQUIRE(fake != reconstruction.messages.end());
     CHECK(fake->timestamp == MarketOpen);
@@ -207,20 +216,21 @@ TEST_CASE("Reconstructor merges synthetics into the recorded stream in order", "
 }
 
 TEST_CASE("LobsterData rejects mismatched file lengths", "[reconstructor]") {
-    TempLobsterFiles files{{
-                               msg(34201, Type::ORDER, 1000, 10, 10000, Direction::BUY),
-                               msg(34202, Type::ORDER, 1001, 5, 10000, Direction::BUY),
-                           },
-                           {
-                               book({{10100, 5}}, {{10000, 10}}),
-                           }};
+    TempLobsterFiles const files{
+        {
+            msg(34201, Type::ORDER, 1000, 10, 10000, Direction::BUY),
+            msg(34202, Type::ORDER, 1001, 5, 10000, Direction::BUY),
+        },
+        {
+            book({{.price = 10100, .size = 5}}, {{.price = 10000, .size = 10}}),
+        }};
 
     REQUIRE_THROWS(LobsterData{files.messages, files.orderbook});
 }
 
 TEST_CASE("LobsterData rejects missing files", "[reconstructor]") {
-    TempLobsterFiles files{{msg(34201, Type::ORDER, 1000, 10, 10000, Direction::BUY)},
-                           {book({{10100, 5}}, {{10000, 10}})}};
+    TempLobsterFiles const files{{msg(34201, Type::ORDER, 1000, 10, 10000, Direction::BUY)},
+                                 {book({{10100, 5}}, {{10000, 10}})}};
 
     REQUIRE_THROWS(LobsterData{files.dir / "nonexistent.csv", files.orderbook});
     REQUIRE_THROWS(LobsterData{files.messages, files.dir / "nonexistent.csv"});

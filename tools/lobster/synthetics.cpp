@@ -1,15 +1,20 @@
 #include "synthetics.hpp"
 
 #include "algorithm.hpp"
-#include "lobster/ranges.hpp"
-#include "lobster/types.hpp"
+
+#include <lobster/ranges.hpp>
+#include <lobster/types.hpp>
 
 #include <algorithm>
 #include <cassert>
+#include <cstdint>
+#include <cstdlib>
 #include <format>
 #include <functional>
 #include <ranges>
+#include <sstream>
 #include <stdexcept>
+#include <utility>
 
 namespace ome::tools::lobster {
 
@@ -19,13 +24,15 @@ Synthetics::Synthetics(Orphans const &orphans, Levels const &levels, NextOrderId
     : only_referenced_by_price{vector_to_map(orphans.only_referenced, &Message::price)},
       only_created_by_price{vector_to_map(orphans.only_created, &Message::price)},
       partially_deleted_by_price{vector_to_map(orphans.partially_deleted, &Message::price)},
-      next_order_id(next_order_id_) {
+      next_order_id(std::move(next_order_id_)) {
 
     for (auto [price, views] : levels) {
         assert(!views.empty());
 
-        PriceView start_view{.entry = {.line = 0, .timestamp = MarketOpen, .size = 0},
-                             .exit = {.line = 0, .timestamp = MarketOpen, .size = 0}};
+        PriceView const start_view{
+            .entry = {.line = 0, .timestamp = MarketOpen, .size = 0},
+            .exit = {.line = 0, .timestamp = MarketOpen, .size = 0},
+        };
         views.insert(views.begin(), start_view);
 
         auto &&orphans = extract(price);
@@ -81,10 +88,10 @@ auto Synthetics::extract(Price price) -> OrphansInPrice {
 auto Synthetics::synthetics_per_price(Price price, PriceViews const &views, OrphansInPrice &orphans,
                                       Messages &consumed) -> void {
 
-    for (auto const &[first, second] : views | views::adjacent<2>) {
+    for (auto &&[first, second] : views | views::adjacent<2>) {
         // generate all orphans that belong in this view interval
 
-        PriceView hidden{.entry = first.exit, .exit = second.entry};
+        PriceView const hidden{.entry = first.exit, .exit = second.entry};
         auto volume = static_cast<std::int64_t>(hidden.exit.size - hidden.entry.size);
 
         for (auto &&orphan :
@@ -99,7 +106,7 @@ auto Synthetics::synthetics_per_price(Price price, PriceViews const &views, Orph
         }
 
         if (volume > 0) {
-            Message fake_order{
+            Message const fake_order{
                 .timestamp = first.exit.timestamp,
                 .type = Type::ORDER,
                 .order_id = synthetic_id++,
@@ -122,10 +129,10 @@ auto Synthetics::synthetics_per_price(Price price, PriceViews const &views, Orph
                     continue;
                 }
 
-                if (it->size > volume) {
+                if (std::cmp_greater(it->size, volume)) {
                     synthetics.push_back(
                         make_cancel(*it, hidden.entry.timestamp, static_cast<Size>(volume)));
-                    it->size -= volume;
+                    it->size -= static_cast<std::uint64_t>(volume);
                     volume = 0;
                 } else {
                     // even if we're entirely consuming an order that was created and never
@@ -237,7 +244,7 @@ auto Synthetics::make_cancel(Message const &orphan, Timestamp dt, Size size) -> 
 namespace {
 auto error_msg(auto const &error, auto const &price, auto const &views, auto const &synthetics,
                auto const &only_referenced, auto const &only_created, auto const &orphans_consumed,
-               NextOrderId next_order_id) {
+               NextOrderId const &next_order_id) {
 
     std::ostringstream oss;
     oss << error << '\n';
@@ -289,7 +296,7 @@ SyntheticsError::SyntheticsError(auto error, auto const &price, auto const &view
                                  auto const &synthetics, auto const &only_referenced,
                                  auto const &only_created, auto const &orphans_consumed,
                                  NextOrderId next_order_id)
-    : std::runtime_error{error_msg(error, price, views, synthetics, only_referenced, only_created,
-                                   orphans_consumed, next_order_id)} {}
+    : std::runtime_error(error_msg(error, price, views, synthetics, only_referenced, only_created,
+                                   orphans_consumed, next_order_id)) {}
 
 } // namespace ome::tools::lobster

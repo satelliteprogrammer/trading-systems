@@ -1,13 +1,19 @@
 #include "algorithm.hpp"
-#include "lobster/ranges.hpp"
+
+#include <lobster/ranges.hpp>
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers.hpp>
 #include <catch2/matchers/catch_matchers_predicate.hpp>
 #include <catch2/matchers/catch_matchers_quantifiers.hpp>
 
+#include <cstddef>
 #include <functional>
 #include <string_view>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 using namespace std::string_literals;
 using namespace Catch;
@@ -45,9 +51,11 @@ class Spy {
 
 } // namespace
 
+// NOLINTBEGIN(readability-magic-numbers)
+
 TEST_CASE("Welford's algorithm computes mean and variance", "[algorithm]") {
     algorithm::Welford welford;
-    std::vector<double> values{1.0, 2.0, 3.0, 4.0, 5.0};
+    std::vector<double> const values{1.0, 2.0, 3.0, 4.0, 5.0};
     for (auto const &value : values) {
         welford.update(value);
     }
@@ -56,7 +64,7 @@ TEST_CASE("Welford's algorithm computes mean and variance", "[algorithm]") {
 }
 
 TEST_CASE("SpyObject", "[algorithm]") {
-    Spy obj;
+    Spy const obj;
     CHECK(obj.is_default_ctor());
 }
 
@@ -65,7 +73,7 @@ TEST_CASE("vector_to_map", "[algorithm]") {
     CHECK_THAT(objects, AllMatch(Predicate<Spy>(std::mem_fn(&Spy::is_default_ctor))));
 
     std::size_t idx{0};
-    auto proj = [&idx](Spy const & /*obj*/) -> std::size_t { return idx++; };
+    auto const proj = [&idx](Spy const & /*obj*/) -> std::size_t { return idx++; };
 
     SECTION("lvalue reference") {
         auto map = algorithm::vector_to_map(objects, proj);
@@ -108,5 +116,7 @@ TEST_CASE("map_to_vector", "[algorithm]") {
         CHECK_THAT(vec, AllMatch(Predicate<Spy>(std::mem_fn(&Spy::is_move_ctor))));
     }
 }
+
+// NOLINTEND(readability-magic-numbers)
 
 } // namespace ome::tools::lobster

@@ -1,8 +1,9 @@
 #pragma once
 
-#include "book/engine.hpp"
-
+#include <book/engine.hpp>
+#include <book/order.hpp>
 #include <lobster/reconstructor.hpp>
+#include <lobster/types.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -55,10 +56,10 @@ using Trade = std::variant<NewOrder, PartialCancel, Cancel, Execute, Halt>;
 
 struct ValidationResult {
     bool valid{true};
-    tools::lobster::Message message;
-    tools::lobster::Direction expected_direction;
-    tools::lobster::Limit expected;
-    tools::lobster::Limit actual;
+    tools::lobster::Message message{};
+    tools::lobster::Direction expected_direction{tools::lobster::Direction::SELL};
+    tools::lobster::Limit expected{};
+    tools::lobster::Limit actual{};
 };
 
 auto message_to_trade(tools::lobster::Message const &msg) -> Trade;
@@ -119,7 +120,8 @@ class LobsterReplay {
                                    [&] -> auto { return book.cancel(id, execute.order.quantity); });
                     });
                 },
-                [&](Halt const &) -> std::expected<void, std::string_view> { return {}; }},
+                [&](Halt const &) -> std::expected<void, std::string_view> { return {}; },
+            },
             trade);
     }
 

@@ -1,5 +1,7 @@
 #include "replay.hpp"
 
+#include <book/engine.hpp>
+
 #include <cstddef>
 #include <cstdlib>
 #include <filesystem>

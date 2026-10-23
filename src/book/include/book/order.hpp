@@ -23,7 +23,7 @@ enum class Side : std::uint8_t { Buy, Sell };
 struct Order : LimitOrder {
     Side side{};
     Price price{};
-    Timestamp timestamp;
+    Timestamp timestamp{}; // NOLINT(readability-redundant-member-init) for designatated initializer
     std::array<char, 5> trader_id{}; // NOLINT(readability-magic-numbers)
 };
 

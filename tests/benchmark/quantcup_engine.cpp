@@ -1,9 +1,13 @@
-#include "book/engine.hpp"
+#include <book/engine.hpp>
+#include <book/order.hpp>
 
 extern "C" {
-#include "quantcup/engine.h"
+#include <quantcup/engine.h>
+#include <quantcup/types.h>
 }
 
+#include <array>
+#include <cstdint>
 #include <cstring>
 #include <functional>
 
@@ -20,7 +24,7 @@ auto execute(t_order const &order, OrderId /*id*/, Order const &order_, Price pr
              std::uint64_t quantity) {
     t_execution exec;
     std::strncpy(exec.symbol, order.symbol, STRINGLEN);
-    exec.price = price;
+    exec.price = static_cast<t_price>(price);
     exec.size = quantity;
 
     exec.side = order.side;
@@ -42,11 +46,11 @@ void destroy() { book = Engine{}; }
 
 auto limit(t_order order) -> t_orderid {
     auto const side = is_ask(order.side) != 0 ? Side::Sell : Side::Buy;
-    Order book_order{{order.size}, side, order.price, {}, std::to_array(order.trader)};
+    Order const book_order{{order.size}, side, order.price, {}, std::to_array(order.trader)};
     return *book.add(book_order, std::bind_front(&execute, order)) + 1;
 }
 
-void cancel(t_orderid orderid) { [[maybe_unused]] auto res = book.cancel(orderid - 1); }
+void cancel(t_orderid orderid) { [[maybe_unused]] auto const res = book.cancel(orderid - 1); }
 
 // NOLINTEND(cppcoreguidelines-pro-bounds-array-to-pointer-decay)
 // NOLINTEND(cppcoreguidelines-avoid-non-const-global-variables)

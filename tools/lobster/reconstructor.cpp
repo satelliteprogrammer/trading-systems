@@ -1,17 +1,28 @@
 #include "lobster/reconstructor.hpp"
 
 #include "algorithm.hpp"
-#include "lobster/ranges.hpp"
 #include "parser.hpp"
 #include "synthetics.hpp"
+
+#include <lobster/ranges.hpp>
+#include <lobster/types.hpp>
 
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
+#include <filesystem>
+#include <flat_set>
 #include <format>
 #include <fstream>
+#include <functional>
+#include <iterator>
+#include <map>
 #include <print>
 #include <ranges>
+#include <stdexcept>
+#include <string>
+#include <utility>
+#include <vector>
 
 using namespace std::literals::chrono_literals;
 
@@ -19,7 +30,7 @@ namespace ome::tools::lobster {
 
 namespace {
 
-constexpr auto sum_size(Size acc, Message const &msg) -> Size { return acc + msg.size; };
+constexpr auto sum_size(Size acc, Message const &msg) -> Size { return acc + msg.size; }
 
 } // namespace
 
@@ -94,7 +105,7 @@ auto Reconstructor::orphans() const -> Orphans {
     // move from references to delete if all references consume original trade
     for (auto it = referenced.begin(); it != referenced.end();) {
         if (created_ids.contains(it->first)) {
-            auto size = ranges::fold_left(it->second, Size{0}, sum_size);
+            auto const size = ranges::fold_left(it->second, Size{0}, sum_size);
             if (created_ids[it->first].size == size) {
                 auto last = it->second.back();
                 last.index.reset();
@@ -133,11 +144,11 @@ auto Reconstructor::orphans() const -> Orphans {
 
     std::map<OrderId, Message> partially_deleted;
     for (auto const &[order_id, msgs] : deleted) {
-        auto it = created_ids.find(order_id);
+        auto const it = created_ids.find(order_id);
         if (it == created_ids.end()) {
             continue;
         }
-        auto reduced = ranges::fold_left(msgs, Size{0}, sum_size);
+        auto const reduced = ranges::fold_left(msgs, Size{0}, sum_size);
         if (it->second.size > reduced) {
             auto residual = it->second;
             residual.size -= reduced;
@@ -145,14 +156,16 @@ auto Reconstructor::orphans() const -> Orphans {
         }
     }
 
-    auto by_timestamp = [](auto &&map) -> Messages {
+    auto const by_timestamp = [](auto &&map) -> Messages {
         auto result = algorithm::map_to<std::vector>(std::forward<decltype(map)>(map));
         ranges::sort(result, {}, &Message::timestamp);
         return result;
     };
-    return {.only_referenced = by_timestamp(std::move(orphans)),
-            .only_created = by_timestamp(std::move(alive)),
-            .partially_deleted = by_timestamp(std::move(partially_deleted))};
+    return {
+        .only_referenced = by_timestamp(std::move(orphans)),
+        .only_created = by_timestamp(std::move(alive)),
+        .partially_deleted = by_timestamp(std::move(partially_deleted)),
+    };
 }
 
 auto Reconstructor::levels() const -> Levels {
@@ -160,7 +173,7 @@ auto Reconstructor::levels() const -> Levels {
 
     std::vector const initial_orderbook_{initial_orderbook()};
     std::vector const initial_message_{messages_.front()};
-    for (auto const &[line, orderbook, message] :
+    for (auto &&[line, orderbook, message] :
          views::zip(views::iota(0U), views::concat(initial_orderbook_, expected_orderbooks_),
                     views::concat(initial_message_, messages_))) {
         // fill missing book prices
@@ -174,7 +187,7 @@ auto Reconstructor::levels() const -> Levels {
             }
         }
 
-        auto direction = [&](Price const &price) -> Direction {
+        auto const direction = [&](Price const &price) -> Direction {
             return (price <= orderbook.bids.begin()->price) ? Direction::BUY : Direction::SELL;
         };
 
@@ -184,22 +197,28 @@ auto Reconstructor::levels() const -> Levels {
         for (auto const &level : level_views) {
             if (!levels.contains(level.price)) {
                 // 1st iteration is opening the book (0), but references the initial orderbook (1)
-                auto line_ = line != 0 ? line : 1;
-                PriceView initial{.entry = {
-                                      .line = line_,
-                                      .timestamp = message.timestamp,
-                                      .size = level.quantity,
-                                      .direction = direction(level.price),
-                                  }};
+                auto const line_ = line != 0 ? line : 1;
+                PriceView const initial{
+                    .entry =
+                        {
+                            .line = line_,
+                            .timestamp = message.timestamp,
+                            .size = level.quantity,
+                            .direction = direction(level.price),
+                        },
+                };
                 levels.emplace(level.price, std::vector{initial});
             } else if (levels[level.price].back().exit.timestamp != MarketClose) {
                 // level reentered view
-                PriceView view{.entry = {
-                                   .line = line,
-                                   .timestamp = message.timestamp,
-                                   .size = level.quantity,
-                                   .direction = direction(level.price),
-                               }};
+                PriceView const view{
+                    .entry =
+                        {
+                            .line = line,
+                            .timestamp = message.timestamp,
+                            .size = level.quantity,
+                            .direction = direction(level.price),
+                        },
+                };
                 levels[level.price].push_back(view);
             } else {
                 // no new view to add
@@ -210,13 +229,11 @@ auto Reconstructor::levels() const -> Levels {
 
         // close levels that disappear
         for (auto &[price, views] : levels) {
-            auto it = ranges::find(level_views, price, &Limit::price);
-            if (it == level_views.end()) {
-                if (views.back().exit.timestamp == MarketClose) {
-                    views.back().exit.line = line;
-                    views.back().exit.timestamp = message.timestamp;
-                    views.back().exit.direction = direction(price);
-                }
+            auto const it = ranges::find(level_views, price, &Limit::price);
+            if ((it == level_views.end()) && (views.back().exit.timestamp == MarketClose)) {
+                views.back().exit.line = line;
+                views.back().exit.timestamp = message.timestamp;
+                views.back().exit.direction = direction(price);
             }
         }
     }
@@ -234,7 +251,7 @@ auto Reconstructor::levels() const -> Levels {
 
 auto Reconstructor::initial_orderbook() const -> ExpectedOrderbook {
     auto initial_orderbook_ = expected_orderbooks_.front();
-    auto initial_message = messages_.front();
+    auto const initial_message = messages_.front();
 
     Limit limit{.price = initial_message.price};
 
@@ -281,10 +298,10 @@ auto Reconstructor::initial_orderbook() const -> ExpectedOrderbook {
 
 auto Reconstructor::synthetics() const -> Messages {
     std::println("Retrieving orphan messages...");
-    auto orphans = this->orphans();
+    auto const orphans = this->orphans();
 
     std::println("Collecting orderbook levels...");
-    auto levels = this->levels();
+    auto const levels = this->levels();
 
     std::println("Generating missing messages...");
     return Synthetics{orphans, levels, std::bind_front(&Reconstructor::next_order_id, this)}();
@@ -301,11 +318,11 @@ auto Reconstructor::next_order_id(MessageLine idx) const -> OrderId {
         idx = messages_.size() + 1;
     }
 
-    auto begin = ranges::next(messages_.begin(), static_cast<std::ptrdiff_t>(idx - 1));
+    auto const begin = ranges::next(messages_.begin(), static_cast<std::ptrdiff_t>(idx - 1));
     constexpr auto next_order = [](auto const &msg) -> bool { return msg.type == Type::ORDER; };
-    auto it = ranges::find_if(begin, messages_.end(), next_order);
+    auto const it = ranges::find_if(begin, messages_.end(), next_order);
     if (it == messages_.end()) {
-        auto it = ranges::find_if(messages_.rbegin(), messages_.rend(), next_order);
+        auto const it = ranges::find_if(messages_.rbegin(), messages_.rend(), next_order);
         if (it == messages_.rend()) {
             throw std::runtime_error{std::format("No next order found after message line {}", idx)};
         }
@@ -326,7 +343,7 @@ LobsterData::LobsterData(std::filesystem::path const &messages,
             std::format("LOBSTER orderbook file does not exist: {}", orderbook.string())};
     }
 
-    auto count_lines = [](std::filesystem::path const &path) -> std::size_t {
+    auto const count_lines = [](std::filesystem::path const &path) -> std::size_t {
         std::ifstream file{path};
         std::size_t line_count = 0;
         std::string _;

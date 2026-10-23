@@ -5,6 +5,7 @@
 #include <cassert>
 #include <iterator>
 #include <tuple>
+#include <utility>
 
 namespace ome::book::books::node {
 
@@ -97,6 +98,7 @@ auto IndexedBook::find(OrderId id) -> iterator {
         return {by_price_map<Side::Sell>()[it->second->price], maps_.get<Side::Sell>().end(),
                 it->second};
     }
+    std::unreachable();
 }
 
 template auto IndexedBook::begin<Side::Buy>() const -> iterator;

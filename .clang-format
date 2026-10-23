@@ -2,4 +2,16 @@
 BasedOnStyle: LLVM
 ColumnLimit: 100
 IndentWidth: 4
+
+IncludeBlocks: Regroup
+IncludeIsMainRegex: '(\.test)?$'
+IncludeCategories:
+  - Regex: '^"'
+    Priority: 1
+  - Regex: '^<(book|lobster|testing)/'
+    Priority: 2
+  - Regex: '^<.+/'
+    Priority: 3
+  - Regex: '^<'
+    Priority: 4
 ...

@@ -1,10 +1,12 @@
 #pragma once
 
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <format>
 #include <map>
 #include <optional>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -35,7 +37,7 @@ enum class Direction : std::int8_t {
 };
 
 struct Message {
-    std::optional<MessageLine> index;
+    std::optional<MessageLine> index{std::nullopt};
     Timestamp timestamp;
     Type type{Type::HALT};
     OrderId order_id{};
@@ -80,7 +82,7 @@ template <> struct std::formatter<ome::tools::lobster::Type> : std::formatter<st
     template <typename FormatContext>
     auto format(ome::tools::lobster::Type type, FormatContext &ctx) const {
         using ome::tools::lobster::Type;
-        std::string_view name = [type]() -> std::string_view {
+        std::string_view const name = [type] -> std::string_view {
             switch (type) {
             case Type::ORDER:
                 return "ORDER";
@@ -106,7 +108,7 @@ struct std::formatter<ome::tools::lobster::Direction> : std::formatter<std::stri
     template <typename FormatContext>
     auto format(ome::tools::lobster::Direction dir, FormatContext &ctx) const {
         using ome::tools::lobster::Direction;
-        std::string_view name = (dir == Direction::BUY) ? "BUY" : "SELL";
+        std::string_view const name = (dir == Direction::BUY) ? "BUY" : "SELL";
         return std::formatter<std::string_view>::format(name, ctx);
     }
 };

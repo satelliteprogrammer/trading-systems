@@ -1,7 +1,13 @@
 #include "book/engine.hpp"
 
-#include <catch2/catch_test_macros.hpp>
+#include <book/order.hpp>
 #include <testing/catch_expected.hpp>
+
+#include <catch2/catch_test_macros.hpp>
+
+#include <cstdint>
+#include <utility>
+#include <vector>
 
 namespace ome::book {
 

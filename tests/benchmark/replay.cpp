@@ -1,8 +1,17 @@
 #include "replay.hpp"
 
+#include <book/engine.hpp>
+#include <book/order.hpp>
+#include <lobster/reconstructor.hpp>
+#include <lobster/types.hpp>
+
+#include <expected>
 #include <filesystem>
+#include <format>
+#include <optional>
 #include <print>
 #include <stdexcept>
+#include <string_view>
 #include <utility>
 
 namespace fs = std::filesystem;
@@ -33,7 +42,7 @@ auto LobsterReplay::next() -> std::optional<Trade> {
     if (message_index_ >= messages_.size()) {
         return std::nullopt;
     }
-    auto msg = messages_[message_index_++];
+    auto const msg = messages_[message_index_++];
     return message_to_trade(msg);
 }
 
@@ -48,8 +57,10 @@ auto LobsterReplay::validate(book::Engine const &book) const -> ValidationResult
     for (auto const &expected_bid : expected_orderbooks_[*idx].bids) {
         if (auto actual_qty = book.volume(expected_bid.price);
             actual_qty != expected_bid.quantity) {
-            tools::lobster::Limit actual{.price = expected_bid.price,
-                                         .quantity = actual_qty.value()};
+            tools::lobster::Limit const actual{
+                .price = expected_bid.price,
+                .quantity = actual_qty.value(),
+            };
             return {
                 .valid = false,
                 .message = previous_message,
@@ -63,8 +74,10 @@ auto LobsterReplay::validate(book::Engine const &book) const -> ValidationResult
     for (auto const &expected_ask : expected_orderbooks_[*idx].asks) {
         if (auto actual_qty = book.volume(expected_ask.price);
             actual_qty != expected_ask.quantity) {
-            tools::lobster::Limit actual{.price = expected_ask.price,
-                                         .quantity = actual_qty.value()};
+            tools::lobster::Limit const actual{
+                .price = expected_ask.price,
+                .quantity = actual_qty.value(),
+            };
             return {
                 .valid = false,
                 .message = previous_message,
@@ -80,7 +93,7 @@ auto LobsterReplay::validate(book::Engine const &book) const -> ValidationResult
 
 auto LobsterReplay::book_id(book::OrderId external_id) const
     -> std::expected<book::OrderId, std::string_view> {
-    auto it = id_map_.find(external_id);
+    auto const it = id_map_.find(external_id);
     if (it == id_map_.end()) {
         return std::unexpected{"unknown order id"};
     }
@@ -92,40 +105,48 @@ auto message_to_trade(tools::lobster::Message const &msg) -> Trade {
     case tools::lobster::Type::ORDER:
         switch (msg.direction) {
         case tools::lobster::Direction::BUY:
-            return NewOrder{.order_id = msg.order_id,
-                            .order =
-                                book::Order{{msg.size}, book::Side::Buy, msg.price, msg.timestamp}};
+            return NewOrder{
+                .order_id = msg.order_id,
+                .order = book::Order{{msg.size}, book::Side::Buy, msg.price, msg.timestamp},
+            };
         case tools::lobster::Direction::SELL:
             return NewOrder{
                 .order_id = msg.order_id,
-                .order = book::Order{{msg.size}, book::Side::Sell, msg.price, msg.timestamp}};
+                .order = book::Order{{msg.size}, book::Side::Sell, msg.price, msg.timestamp},
+            };
         default:
             throw std::runtime_error{
                 std::format("Unknown direction type: {}", static_cast<int>(msg.direction))};
         }
     case tools::lobster::Type::CANCEL:
-        return PartialCancel{.order_id = msg.order_id,
-                             .price = msg.price,
-                             .quantity = msg.size,
-                             .timestamp = msg.timestamp};
+        return PartialCancel{
+            .order_id = msg.order_id,
+            .price = msg.price,
+            .quantity = msg.size,
+            .timestamp = msg.timestamp,
+        };
     case tools::lobster::Type::DELETE:
-        return Cancel{.order_id = msg.order_id,
-                      .price = msg.price,
-                      .quantity = msg.size,
-                      .timestamp = msg.timestamp};
+        return Cancel{
+            .order_id = msg.order_id,
+            .price = msg.price,
+            .quantity = msg.size,
+            .timestamp = msg.timestamp,
+        };
 
     case tools::lobster::Type::EXECUTE:
         switch (msg.direction) {
         case tools::lobster::Direction::BUY:
-            return Execute{.order_id = msg.order_id,
-                           .order =
-                               book::Order{{msg.size}, book::Side::Sell, msg.price, msg.timestamp},
-                           .hidden = false};
+            return Execute{
+                .order_id = msg.order_id,
+                .order = book::Order{{msg.size}, book::Side::Sell, msg.price, msg.timestamp},
+                .hidden = false,
+            };
         case tools::lobster::Direction::SELL:
-            return Execute{.order_id = msg.order_id,
-                           .order =
-                               book::Order{{msg.size}, book::Side::Buy, msg.price, msg.timestamp},
-                           .hidden = false};
+            return Execute{
+                .order_id = msg.order_id,
+                .order = book::Order{{msg.size}, book::Side::Buy, msg.price, msg.timestamp},
+                .hidden = false,
+            };
         default:
             throw std::runtime_error{
                 std::format("Unknown direction type: {}", static_cast<int>(msg.direction))};
@@ -134,15 +155,20 @@ auto message_to_trade(tools::lobster::Message const &msg) -> Trade {
     case tools::lobster::Type::EXECUTE_HIDDEN:
         switch (msg.direction) {
         case tools::lobster::Direction::BUY:
-            return Execute{.order_id = msg.order_id,
-                           .order =
-                               book::Order{{msg.size}, book::Side::Buy, msg.price, msg.timestamp},
-                           .hidden = true};
+            return Execute{
+                .order_id = msg.order_id,
+                .order = book::Order{{msg.size}, book::Side::Buy, msg.price, msg.timestamp},
+                .hidden = true,
+            };
         case tools::lobster::Direction::SELL:
-            return Execute{.order_id = msg.order_id,
-                           .order =
-                               book::Order{{msg.size}, book::Side::Sell, msg.price, msg.timestamp},
-                           .hidden = true};
+            return Execute{
+                .order_id = msg.order_id,
+                .order = book::Order{{msg.size}, book::Side::Sell, msg.price, msg.timestamp},
+                .hidden = true,
+            };
+        default:
+            throw std::runtime_error{
+                std::format("Unknown direction type: {}", static_cast<int>(msg.direction))};
         }
 
     case tools::lobster::Type::HALT:

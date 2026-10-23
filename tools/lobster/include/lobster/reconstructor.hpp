@@ -3,9 +3,11 @@
 #include <lobster/types.hpp>
 
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <flat_set>
 #include <format>
+#include <functional>
 #include <string_view>
 #include <vector>
 
@@ -37,7 +39,7 @@ class LobsterData {
 
 class Reconstructor {
   public:
-    Reconstructor(LobsterData const &data);
+    explicit Reconstructor(LobsterData const &data);
 
     [[nodiscard]] auto messages() && -> Messages;
     [[nodiscard]] auto expected_orderbooks() && -> std::vector<ExpectedOrderbook>;

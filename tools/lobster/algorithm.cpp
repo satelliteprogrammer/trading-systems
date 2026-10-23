@@ -6,7 +6,7 @@ namespace ome::tools::lobster::algorithm {
 
 void Welford::update(double value) {
     count_ += 1;
-    double delta = value - mean_;
+    double const delta = value - mean_;
     mean_ += delta / static_cast<double>(count_);
     m2_ += delta * (value - mean_);
 }

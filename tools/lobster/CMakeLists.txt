@@ -9,6 +9,7 @@ add_library(tools_lobster_parser
 )
 
 target_compile_features(tools_lobster_parser PUBLIC cxx_std_26)
+ts_enable_warnings(tools_lobster_parser)
 target_include_directories(
   tools_lobster_parser
   PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -26,6 +27,7 @@ if(PROJECT_IS_TOP_LEVEL AND BUILD_TESTING)
     synthetics.test.cpp
   )
   target_compile_features(tests_lobster_reconstructor PUBLIC cxx_std_26)
+  ts_enable_warnings(tests_lobster_reconstructor)
   target_link_libraries(tests_lobster_reconstructor PRIVATE Catch2::Catch2WithMain
                                                             tools_lobster_parser)
   catch_discover_tests(tests_lobster_reconstructor)

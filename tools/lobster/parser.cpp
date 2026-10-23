@@ -1,9 +1,15 @@
 #include "parser.hpp"
 
+#include <lobster/reconstructor.hpp>
+#include <lobster/types.hpp>
+
+#include <cassert>
+#include <chrono>
 #include <format>
 #include <regex>
 #include <sstream>
 #include <stdexcept>
+#include <string>
 
 using namespace std::literals::chrono_literals;
 
@@ -19,24 +25,28 @@ auto parse_message(std::string const &line) -> Message {
         throw std::runtime_error{std::format("malformed message line: {}", line)};
     }
 
+    assert(match.ready());
+
     // NOLINTBEGIN(readability-magic-numbers)
-    auto time_seconds = chrono::duration<double>{std::stod(match[1].str())};
-    auto order_type = static_cast<Type>(std::stoul(match[2].str()));
-    auto order_id = static_cast<OrderId>(std::stoull(match[3].str()));
-    auto size = std::stoull(match[4].str());
-    auto price = static_cast<Price>(std::stoull(match[5].str()));
-    auto direction = static_cast<Direction>(std::stoi(match[6].str()));
+    auto const time_seconds = chrono::duration<double>{std::stod(match[1].str())};
+    auto const order_type = static_cast<Type>(std::stoul(match[2].str()));
+    auto const order_id = static_cast<OrderId>(std::stoull(match[3].str()));
+    auto const size = std::stoull(match[4].str());
+    auto const price = static_cast<Price>(std::stoull(match[5].str()));
+    auto const direction = static_cast<Direction>(std::stoi(match[6].str()));
     // NOLINTEND(readability-magic-numbers)
 
-    auto time_ns = chrono::duration_cast<chrono::nanoseconds>(time_seconds);
-    auto timestamp = chrono::sys_days{LobsterDay} + time_ns;
+    auto const time_ns = chrono::duration_cast<chrono::nanoseconds>(time_seconds);
+    auto const timestamp = chrono::sys_days{LobsterDay} + time_ns;
 
-    return Message{.timestamp = timestamp,
-                   .type = order_type,
-                   .order_id = order_id,
-                   .size = size,
-                   .price = price,
-                   .direction = direction};
+    return Message{
+        .timestamp = timestamp,
+        .type = order_type,
+        .order_id = order_id,
+        .size = size,
+        .price = price,
+        .direction = direction,
+    };
 }
 
 auto parse_orderbook_line(std::string const &line) -> ExpectedOrderbook {
@@ -46,22 +56,22 @@ auto parse_orderbook_line(std::string const &line) -> ExpectedOrderbook {
     std::string token;
 
     while (std::getline(iss, token, ',')) {
-        auto ask_price = std::stoull(token);
+        auto const ask_price = std::stoull(token);
 
         if (!std::getline(iss, token, ',')) {
             throw std::runtime_error{"Malformed orderbook line: missing ask size"};
         }
-        auto ask_size = std::stoull(token);
+        auto const ask_size = std::stoull(token);
 
         if (!std::getline(iss, token, ',')) {
             throw std::runtime_error{"Malformed orderbook line: missing bid price"};
         }
-        auto bid_price = std::stoull(token);
+        auto const bid_price = std::stoull(token);
 
         if (!std::getline(iss, token, ',')) {
             throw std::runtime_error{"Malformed orderbook line: missing bid size"};
         }
-        auto bid_size = std::stoull(token);
+        auto const bid_size = std::stoull(token);
 
         if (ask_size > 0) {
             result.asks.emplace(ask_price, ask_size);

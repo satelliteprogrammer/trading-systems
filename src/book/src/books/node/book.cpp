@@ -27,7 +27,7 @@ template <Side S> auto Book::emplace(RestingOrder order) -> iterator {
 }
 
 auto Book::erase(iterator it) -> iterator {
-    auto side = it->side;
+    auto const side = it->side;
 
     it.inner_it_ = it.outer_it_->second.orders.erase(it.inner_it_);
 
@@ -47,7 +47,7 @@ auto Book::erase(iterator it) -> iterator {
 }
 
 auto Book::find(OrderId id) -> iterator {
-    auto is_order = [id](auto const &order) { return order.order_id == id; };
+    auto const is_order = [id](auto const &order) { return order.order_id == id; };
 
     if (auto itf = std::ranges::find_if(begin<Side::Buy>(), end<Side::Buy>(), is_order);
         itf != end<Side::Buy>()) {

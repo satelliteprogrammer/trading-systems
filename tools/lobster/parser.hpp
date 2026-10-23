@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lobster/reconstructor.hpp>
+#include <lobster/types.hpp>
 
 #include <string>
 

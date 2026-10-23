@@ -3,6 +3,8 @@
 #include <lobster/types.hpp>
 
 #include <functional>
+#include <limits>
+#include <stdexcept>
 #include <unordered_map>
 
 namespace ome::tools::lobster {
@@ -60,7 +62,7 @@ class Synthetics {
 
     NextOrderId next_order_id;
     OrderId first_order_id{next_order_id(1)};
-    OrderId first_synthetic_id{next_order_id(-1)};
+    OrderId first_synthetic_id{next_order_id(std::numeric_limits<MessageLine>::max())};
 
     OrderId synthetic_id{first_synthetic_id};
     Messages synthetics;

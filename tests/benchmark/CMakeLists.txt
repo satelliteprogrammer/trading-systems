@@ -2,6 +2,7 @@ add_library(lobster_replay
   replay.cpp
 )
 target_compile_features(lobster_replay PUBLIC cxx_std_26)
+ts_enable_warnings(lobster_replay)
 target_include_directories(lobster_replay PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(lobster_replay PUBLIC book tools_lobster_parser)
 
@@ -9,16 +10,17 @@ add_executable(bench_big_o_add
   bench_big_o_add.cpp
 )
 target_link_libraries(bench_big_o_add PRIVATE lobster_replay)
+ts_enable_warnings(bench_big_o_add)
 
 add_executable(lobster_validate
   lobster_validate.cpp
 )
 target_link_libraries(lobster_validate PRIVATE lobster_replay)
+ts_enable_warnings(lobster_validate)
 
-# Replays the LOBSTER sample datasets through the book and checks every
-# message against the recorded orderbook. Off by default: the datasets live
-# in Git LFS and each run takes minutes, so only the LOBSTER Validation
-# workflow (and anyone opting in locally) registers them.
+# Replays the LOBSTER sample datasets through the book and checks every message against the recorded
+# orderbook. Off by default: the datasets live in Git LFS and each run takes minutes, so only the
+# LOBSTER Validation workflow (and anyone opting in locally) registers them.
 option(LOBSTER_VALIDATION "Register LOBSTER dataset validation tests" OFF)
 if(LOBSTER_VALIDATION)
   foreach(symbol IN ITEMS AAPL MSFT)
@@ -35,32 +37,34 @@ endif()
 
 set(QUANTCUP ${CMAKE_SOURCE_DIR}/external/quantcup)
 
-# Headers are included as "quantcup/<header>", so quantcup's own limits.h can't
-# shadow the system <limits.h>.
+# Headers are included as "quantcup/<header>", so quantcup's own limits.h can't shadow the system
+# <limits.h>. Third-party code: SYSTEM keeps our warnings out of its headers, and its C drivers
+# build as their own object libraries so that warnings-as-errors only applies to our adapter.
 add_library(quantcup INTERFACE)
-target_include_directories(quantcup INTERFACE ${CMAKE_SOURCE_DIR}/external)
+target_include_directories(quantcup SYSTEM INTERFACE ${CMAKE_SOURCE_DIR}/external)
 
-add_executable(quantcup_test
-  ${QUANTCUP}/test.c
-  quantcup_engine.cpp
-)
+add_library(quantcup_test_driver OBJECT ${QUANTCUP}/test.c)
+target_link_libraries(quantcup_test_driver PRIVATE quantcup)
+# test.c calls test()/test_cancel() before they are declared; silence the C99
+# implicit-function-declaration error that Clang 21 raises by default.
+target_compile_options(quantcup_test_driver PRIVATE -Wno-implicit-function-declaration)
+
+add_executable(quantcup_test quantcup_engine.cpp)
 target_compile_features(quantcup_test PRIVATE cxx_std_26)
-target_link_libraries(quantcup_test PRIVATE book quantcup)
-# test.c calls test()/test_cancel() before they are declared; silence the
-# C99 implicit-function-declaration error that Clang 21 raises by default.
-target_compile_options(quantcup_test PRIVATE
-  $<$<COMPILE_LANGUAGE:C>:-Wno-implicit-function-declaration>)
+target_link_libraries(quantcup_test PRIVATE book quantcup quantcup_test_driver)
+ts_enable_warnings(quantcup_test)
 
-# Scores are only comparable on the reference machine (see docs/benchmarks.md),
-# and score.c relies on Linux's sched_getaffinity and librt.
+# Scores are only comparable on the reference machine (see docs/benchmarks.md), and score.c relies
+# on Linux's sched_getaffinity and librt.
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-  add_executable(quantcup_score
-    ${QUANTCUP}/score.c
-    quantcup_engine.cpp
-  )
-  target_compile_features(quantcup_score PRIVATE cxx_std_26)
-  target_link_libraries(quantcup_score PRIVATE book quantcup m rt)
+  add_library(quantcup_score_driver OBJECT ${QUANTCUP}/score.c)
+  target_link_libraries(quantcup_score_driver PRIVATE quantcup)
   # score.c uses sched_getaffinity without including <sched.h>; force-include it.
-  target_compile_options(quantcup_score PRIVATE
-    $<$<COMPILE_LANGUAGE:C>:-include sched.h -D_GNU_SOURCE -Wno-incompatible-pointer-types>)
+  target_compile_options(quantcup_score_driver PRIVATE
+    -include sched.h -D_GNU_SOURCE -Wno-incompatible-pointer-types)
+
+  add_executable(quantcup_score quantcup_engine.cpp)
+  target_compile_features(quantcup_score PRIVATE cxx_std_26)
+  target_link_libraries(quantcup_score PRIVATE book quantcup quantcup_score_driver m rt)
+  ts_enable_warnings(quantcup_score)
 endif()

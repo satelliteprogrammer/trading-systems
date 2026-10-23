@@ -1,12 +1,14 @@
 #pragma once
 
-#include "books/node/book.hpp"
-#include "order.hpp"
+#include <book/books/node/book.hpp>
+#include <book/order.hpp>
 
+#include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <functional>
 #include <string_view>
+#include <utility>
 
 namespace ome::book {
 
@@ -51,11 +53,11 @@ class Engine {
 
     /// Returns total volume at given price level.
     /// time: O(1)
-    auto volume(Price) const -> expected<std::uint64_t>;
+    [[nodiscard]] auto volume(Price) const -> expected<std::uint64_t>;
 
     /// Returns best bid and ask prices.
     /// time: O(1)
-    auto spread() const -> expected<std::pair<Price, Price>>;
+    [[nodiscard]] auto spread() const -> expected<std::pair<Price, Price>>;
 
   private:
     /// Matches order against the opposite side's levels, best price first.
