@@ -7,6 +7,7 @@ Checks:
   - -cppcoreguidelines-avoid-c-arrays # alias
   - -cppcoreguidelines-avoid-magic-numbers # alias
   - -cppcoreguidelines-c-copy-assignment-signature # alias
+  - -cppcoreguidelines-explicit-constructor # alias
   - -cppcoreguidelines-explicit-virtual-functions # alias
   - -cppcoreguidelines-macro-to-enum # alias
   - -cppcoreguidelines-narrowing-conversions # alias
