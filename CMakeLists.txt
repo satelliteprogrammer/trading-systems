@@ -14,7 +14,7 @@ option(BUILD_TESTING "Build the testing tree." ON)
 
 if(PROJECT_IS_TOP_LEVEL AND BUILD_TESTING)
   include(CTest)
-  find_package(Catch2 3 REQUIRED)
+  find_package(Catch2 3.8 REQUIRED)
   include(Catch)
 endif()
 
