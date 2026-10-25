@@ -169,10 +169,9 @@ TEST_CASE("Book spread test", "[lob]") {
 }
 
 TEST_CASE("Exactly matching the first order at a level keeps the rest cancellable", "[lob]") {
-    // Regression: the execute loop previously always erased the price level after the inner
-    // loop, even when orders remained. An order that exactly consumes the first order at a level
-    // would erase the level while the second order was still live. Calling cancel on that
-    // surviving order would then fail to find its price level and hit std::unreachable().
+    // Regression: the execute loop once erased the price level whenever its first order was
+    // fully matched, even with orders remaining. The surviving order must stay at its level, keep
+    // the level's volume and remain cancellable.
     Engine book;
 
     SECTION("sell against bids") {

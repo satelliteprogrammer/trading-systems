@@ -1,6 +1,6 @@
 #pragma once
 
-#include <book/books/node/book.hpp>
+#include <book/books/node/indexedbook.hpp>
 #include <book/order.hpp>
 
 #include <cstddef>
@@ -40,32 +40,31 @@ class Engine {
 
     static constexpr std::size_t default_max_orders = 1'000'000;
 
-    /// \param max_orders bounds the total number of orders added over the book's lifetime,
-    /// not just concurrently live ones: ids are assigned sequentially, never reused, and
-    /// index directly into a preallocated arena.
+    /// \param max_orders expected number of orders; currently unused.
     explicit Engine(std::size_t max_orders = default_max_orders);
 
-    /// Adds order to the book.
+    /// Adds order to the book, matching it first against the opposite side.
     ///
-    /// time: O(# price levels) for first order at limit, O(1) for all others
+    /// time: O(log # price levels) for first order at limit, O(1) for all others
     ///
-    /// \return id assigned to the order (sequential, starting at 0)
+    /// \return id assigned to the order (sequential, starting at 1, never reused)
     auto add(Order, OrderCallback on_fill = default_callback) -> expected<OrderId>;
 
-    /// Cancels order by id. Returns true if order was found and cancelled.
+    /// Cancels order by id.
     /// time: amortized O(1)
-    /// @warning weak_ptr to the order will remain in the order book until it is cleaned up
+    ///
+    /// \return error if the order was not found.
     auto cancel(OrderId) -> expected<void>;
 
     /// Modifies order by id, keeping its id. See ModifyOps for the effect on priority.
-    /// time: O(# orders)
+    /// time: amortized O(1) when shrinking in place, as add otherwise
     ///
     /// \param on_fill called for the fills of an order moved across the spread
     /// \return error if the order was not found, the quantity is zero or nothing would change.
     auto modify(OrderId, ModifyOps, OrderCallback on_fill = default_callback) -> expected<void>;
 
     /// Returns total volume at given price level.
-    /// time: O(log # price levels)
+    /// time: O(1)
     [[nodiscard]] auto volume(Price) const -> expected<std::uint64_t>;
 
     /// Returns best bid and ask prices.
@@ -78,7 +77,7 @@ class Engine {
     /// Matches order against the opposite side's levels, best price first.
     template <Side> void execute(Order &order, OrderCallback on_fill);
 
-    books::node::Book book;
+    books::node::IndexedBook book;
     OrderId cur_order_id_{0};
 };
 

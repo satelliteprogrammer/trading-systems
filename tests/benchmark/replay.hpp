@@ -65,7 +65,7 @@ struct ValidationResult {
 
 auto message_to_trade(tools::lobster::Message const &msg) -> Trade;
 
-// Replays the reconstructed LOBSTER stream into a Book. LOBSTER ids are
+// Replays the reconstructed LOBSTER stream into an Engine. LOBSTER ids are
 // sparse exchange-assigned reference numbers; the book assigns its own dense
 // ids, so they are translated at the boundary. Lookups happen outside the
 // instrumented calls so only book operations are measured by callers timing
