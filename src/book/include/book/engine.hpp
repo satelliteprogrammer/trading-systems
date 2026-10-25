@@ -7,12 +7,24 @@
 #include <cstdint>
 #include <expected>
 #include <functional>
+#include <optional>
 #include <string_view>
 #include <utility>
 
 namespace ome::book {
 
 template <typename T> using expected = std::expected<T, std::string_view>;
+
+/// Parameters to modify an order currently in the book.
+///
+/// Only decreasing qty at the same price retains price-time priority. Any other change re-adds
+/// the order at the back of its new price level, matching it first if it crosses the spread.
+struct ModifyOps {
+    /// new price, if any
+    std::optional<Price> price = std::nullopt;
+    /// new total quantity of the order, if any; must be positive, use cancel to remove the order
+    std::optional<std::uint64_t> qty = std::nullopt;
+};
 
 class Engine {
   public:
@@ -45,11 +57,12 @@ class Engine {
     /// @warning weak_ptr to the order will remain in the order book until it is cleaned up
     auto cancel(OrderId) -> expected<void>;
 
-    /// Cancels shares of order by id.
+    /// Modifies order by id, keeping its id. See ModifyOps for the effect on priority.
+    /// time: O(# orders)
     ///
-    /// \return true if order was found and cancelled some or all of the shares.
-    /// \return false if order was not found.
-    auto cancel(OrderId, std::uint64_t) -> expected<void>;
+    /// \param on_fill called for the fills of an order moved across the spread
+    /// \return error if the order was not found, the quantity is zero or nothing would change.
+    auto modify(OrderId, ModifyOps, OrderCallback on_fill = default_callback) -> expected<void>;
 
     /// Returns total volume at given price level.
     /// time: O(log # price levels)
@@ -60,6 +73,8 @@ class Engine {
     [[nodiscard]] auto spread() const -> expected<std::pair<Price, Price>>;
 
   private:
+    void add(RestingOrder order, OrderCallback on_fill);
+
     /// Matches order against the opposite side's levels, best price first.
     template <Side> void execute(Order &order, OrderCallback on_fill);
 

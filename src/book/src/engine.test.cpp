@@ -13,6 +13,22 @@ namespace ome::book {
 
 // NOLINTBEGIN(readability-magic-numbers)
 
+namespace {
+struct Fill {
+    OrderId order_id{};
+    Price price{};
+    std::uint64_t quantity{};
+};
+
+/// on_fill callback appending every fill to fills.
+auto recorder(std::vector<Fill> &fills) {
+    return
+        [&fills](OrderId id, Order const & /*order*/, Price price, std::uint64_t quantity) -> void {
+            fills.push_back({.order_id = id, .price = price, .quantity = quantity});
+        };
+}
+} // namespace
+
 TEST_CASE("Add assigns sequential ids starting at 1", "[lob]") {
     Engine book;
 
@@ -50,10 +66,10 @@ TEST_CASE("Add crossing spread behavior", "[lob]") {
     REQUIRE(book.volume(111) == 5);
 }
 
-TEST_CASE("Cancel of an unknown id fails", "[lob]") {
+TEST_CASE("Cancel and modify of an unknown id fail", "[lob]") {
     Engine book;
     REQUIRE(!book.cancel(999));
-    REQUIRE(!book.cancel(999, 5));
+    REQUIRE(!book.modify(999, {.qty = 5}));
 }
 
 TEST_CASE("Cancel removes orders on either side", "[lob]") {
@@ -78,21 +94,19 @@ TEST_CASE("Cancel removes orders on either side", "[lob]") {
     REQUIRE(!book.cancel(*first));
 }
 
-TEST_CASE("Partial cancel", "[lob]") {
+TEST_CASE("Modify reduces quantity to the new total", "[lob]") {
     Engine book;
 
     auto bid = book.add(Order{{10}, Side::Buy, 100});
     auto ask = book.add(Order{{20}, Side::Sell, 110});
 
-    REQUIRE(book.cancel(*bid, 3));
+    REQUIRE(book.modify(*bid, {.qty = 7}));
     REQUIRE(book.volume(100) == 7);
 
-    // cancelling the remainder removes the order
-    REQUIRE(book.cancel(*bid, 7));
-    REQUIRE(book.volume(100) == 0);
-    REQUIRE(!book.cancel(*bid));
+    REQUIRE(book.modify(*bid, {.qty = 3}));
+    REQUIRE(book.volume(100) == 3);
 
-    REQUIRE(book.cancel(*ask, 8));
+    REQUIRE(book.modify(*ask, {.qty = 12}));
     REQUIRE(book.volume(110) == 12);
 }
 
@@ -184,25 +198,13 @@ TEST_CASE("Exactly matching the first order at a level keeps the rest cancellabl
     }
 }
 
-namespace {
-struct Fill {
-    OrderId order_id{};
-    Price price{};
-    std::uint64_t quantity{};
-};
-} // namespace
-
 TEST_CASE("on_fill callback: full single fill", "[lob][callback]") {
     Engine book;
 
     auto resting = book.add(Order{{10}, Side::Sell, 100});
 
     std::vector<Fill> fills;
-    REQUIRE(book.add(
-        Order{{10}, Side::Buy, 100},
-        [&](OrderId id, Order const & /*order*/, Price price, std::uint64_t quantity) -> void {
-            fills.push_back({.order_id = id, .price = price, .quantity = quantity});
-        }));
+    REQUIRE(book.add(Order{{10}, Side::Buy, 100}, recorder(fills)));
 
     REQUIRE(fills.size() == 1);
     REQUIRE(fills[0].order_id == *resting);
@@ -217,11 +219,7 @@ TEST_CASE("on_fill callback: partial fill of resting order", "[lob][callback]") 
     auto resting = book.add(Order{{10}, Side::Sell, 100});
 
     std::vector<Fill> fills;
-    REQUIRE(book.add(
-        Order{{4}, Side::Buy, 100},
-        [&](OrderId id, Order const & /*order*/, Price price, std::uint64_t quantity) -> void {
-            fills.push_back({.order_id = id, .price = price, .quantity = quantity});
-        }));
+    REQUIRE(book.add(Order{{4}, Side::Buy, 100}, recorder(fills)));
 
     REQUIRE(fills.size() == 1);
     REQUIRE(fills[0].order_id == *resting);
@@ -236,11 +234,7 @@ TEST_CASE("on_fill callback: multiple resting orders at same price level", "[lob
     auto second = book.add(Order{{5}, Side::Sell, 100});
 
     std::vector<Fill> fills;
-    REQUIRE(book.add(
-        Order{{10}, Side::Buy, 100},
-        [&](OrderId id, Order const & /*order*/, Price price, std::uint64_t quantity) -> void {
-            fills.push_back({.order_id = id, .price = price, .quantity = quantity});
-        }));
+    REQUIRE(book.add(Order{{10}, Side::Buy, 100}, recorder(fills)));
 
     REQUIRE(fills.size() == 2);
     REQUIRE(fills[0].order_id == *first);
@@ -257,11 +251,7 @@ TEST_CASE("on_fill callback: fills across multiple price levels", "[lob][callbac
     auto second = book.add(Order{{5}, Side::Sell, 105});
 
     std::vector<Fill> fills;
-    REQUIRE(book.add(
-        Order{{10}, Side::Buy, 105},
-        [&](OrderId id, Order const & /*order*/, Price price, std::uint64_t quantity) -> void {
-            fills.push_back({.order_id = id, .price = price, .quantity = quantity});
-        }));
+    REQUIRE(book.add(Order{{10}, Side::Buy, 105}, recorder(fills)));
 
     REQUIRE(fills.size() == 2);
     REQUIRE(fills[0].order_id == *first);
@@ -279,11 +269,7 @@ TEST_CASE("on_fill callback: sell side fills", "[lob][callback]") {
     auto second = book.add(Order{{5}, Side::Buy, 100});
 
     std::vector<Fill> fills;
-    REQUIRE(book.add(
-        Order{{7}, Side::Sell, 100},
-        [&](OrderId id, Order const & /*order*/, Price price, std::uint64_t quantity) -> void {
-            fills.push_back({.order_id = id, .price = price, .quantity = quantity});
-        }));
+    REQUIRE(book.add(Order{{7}, Side::Sell, 100}, recorder(fills)));
 
     REQUIRE(fills.size() == 2);
     REQUIRE(fills[0].order_id == *first);
@@ -291,6 +277,97 @@ TEST_CASE("on_fill callback: sell side fills", "[lob][callback]") {
     REQUIRE(fills[1].order_id == *second);
     REQUIRE(fills[1].quantity == 2);
     REQUIRE(book.volume(100) == 3);
+}
+
+TEST_CASE("Modify without changes fails", "[lob][modify]") {
+    Engine book;
+
+    auto bid = book.add(Order{{10}, Side::Buy, 100});
+
+    REQUIRE(!book.modify(*bid, {}));
+    REQUIRE(!book.modify(*bid, {.qty = 10}));
+    REQUIRE(!book.modify(*bid, {.price = 100}));
+    REQUIRE(!book.modify(*bid, {.price = 100, .qty = 10}));
+    REQUIRE(book.volume(100) == 10);
+}
+
+TEST_CASE("Modify to zero quantity fails", "[lob][modify]") {
+    Engine book;
+
+    auto bid = book.add(Order{{10}, Side::Buy, 100});
+
+    REQUIRE(!book.modify(*bid, {.qty = 0}));
+    REQUIRE(!book.modify(*bid, {.price = 101, .qty = 0}));
+    REQUIRE(book.volume(100) == 10);
+    REQUIRE(book.spread() == std::make_pair(100, 0));
+}
+
+TEST_CASE("Modify keeps priority only when reducing quantity", "[lob][modify]") {
+    Engine book;
+
+    auto first = book.add(Order{{10}, Side::Buy, 100});
+    auto second = book.add(Order{{10}, Side::Buy, 100});
+
+    SECTION("reduce") {
+        REQUIRE(book.modify(*first, {.qty = 5}));
+        REQUIRE(book.volume(100) == 15);
+        std::vector<Fill> fills;
+        REQUIRE(book.add(Order{{1}, Side::Sell, 100}, recorder(fills)));
+        REQUIRE(fills.at(0).order_id == *first);
+    }
+
+    SECTION("increase") {
+        REQUIRE(book.modify(*first, {.qty = 15}));
+        REQUIRE(book.volume(100) == 25);
+        std::vector<Fill> fills;
+        REQUIRE(book.add(Order{{1}, Side::Sell, 100}, recorder(fills)));
+        REQUIRE(fills.at(0).order_id == *second);
+    }
+
+    SECTION("same price, smaller quantity") {
+        REQUIRE(book.modify(*first, {.price = 100, .qty = 5}));
+        REQUIRE(book.volume(100) == 15);
+        std::vector<Fill> fills;
+        REQUIRE(book.add(Order{{1}, Side::Sell, 100}, recorder(fills)));
+        REQUIRE(fills.at(0).order_id == *first);
+    }
+}
+
+TEST_CASE("Modify price moves the order to the back of the new level", "[lob][modify]") {
+    Engine book;
+
+    auto moved = book.add(Order{{10}, Side::Buy, 100});
+    auto resting = book.add(Order{{5}, Side::Buy, 105});
+
+    REQUIRE(book.modify(*moved, {.price = 105, .qty = 7}));
+    REQUIRE(book.volume(100) == 0);
+    REQUIRE(book.volume(105) == 12);
+    REQUIRE(book.spread() == std::make_pair(105, 0));
+    std::vector<Fill> fills;
+    REQUIRE(book.add(Order{{1}, Side::Sell, 105}, recorder(fills)));
+    REQUIRE(fills.at(0).order_id == *resting);
+
+    // the order keeps its id
+    REQUIRE(book.cancel(*moved));
+    REQUIRE(book.volume(105) == 4);
+}
+
+TEST_CASE("Modify price across the spread executes the order", "[lob][modify]") {
+    Engine book;
+
+    auto ask = book.add(Order{{5}, Side::Sell, 110});
+    auto bid = book.add(Order{{10}, Side::Buy, 100});
+
+    std::vector<Fill> fills;
+    REQUIRE(book.modify(*bid, {.price = 110}, recorder(fills)));
+    REQUIRE(fills.size() == 1);
+    REQUIRE(fills[0].order_id == *ask);
+    REQUIRE(fills[0].price == 110);
+    REQUIRE(fills[0].quantity == 5);
+    REQUIRE(book.volume(110) == 5);
+    REQUIRE(book.spread() == std::make_pair(110, 0));
+    REQUIRE(!book.cancel(*ask));
+    REQUIRE(book.cancel(*bid));
 }
 
 // NOLINTEND(readability-magic-numbers)

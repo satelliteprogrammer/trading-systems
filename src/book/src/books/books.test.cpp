@@ -114,7 +114,7 @@ TEMPLATE_LIST_TEST_CASE("Post-increment returns the previous position", "[book]"
 }
 
 TEMPLATE_LIST_TEST_CASE("Orders can be modified through an iterator", "[book]", Books) {
-    // the Engine shrinks resting orders in place on partial fills and partial cancels
+    // the Engine shrinks resting orders in place on partial fills and quantity decreases
     TestType book;
     emplace<Side::Sell>(book, 1, 110, 10);
 

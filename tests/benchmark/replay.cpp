@@ -91,13 +91,13 @@ auto LobsterReplay::validate(book::Engine const &book) const -> ValidationResult
     return {.valid = true};
 }
 
-auto LobsterReplay::book_id(book::OrderId external_id) const
-    -> std::expected<book::OrderId, std::string_view> {
+auto LobsterReplay::book_order(book::OrderId external_id)
+    -> std::expected<BookOrder *, std::string_view> {
     auto const it = id_map_.find(external_id);
     if (it == id_map_.end()) {
         return std::unexpected{"unknown order id"};
     }
-    return it->second;
+    return &it->second;
 }
 
 auto message_to_trade(tools::lobster::Message const &msg) -> Trade {

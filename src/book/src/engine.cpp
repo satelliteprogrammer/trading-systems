@@ -15,22 +15,7 @@ Engine::Engine(std::size_t /*max_orders*/) {}
 
 auto Engine::add(Order order, OrderCallback on_fill) -> expected<OrderId> {
     auto const id = ++cur_order_id_;
-
-    switch (order.side) {
-    case Side::Buy:
-        execute<Side::Sell>(order, on_fill);
-        if (order.quantity > 0) {
-            book.emplace<Side::Buy>({order, id});
-        }
-        break;
-    case Side::Sell:
-        execute<Side::Buy>(order, on_fill);
-        if (order.quantity > 0) {
-            book.emplace<Side::Sell>({order, id});
-        }
-        break;
-    }
-
+    add({order, id}, on_fill);
     return id;
 }
 
@@ -46,19 +31,40 @@ auto Engine::cancel(OrderId id) -> expected<void> {
     return {};
 }
 
-// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
-auto Engine::cancel(OrderId id, std::uint64_t quantity) -> expected<void> {
+auto Engine::modify(OrderId id, ModifyOps ops, OrderCallback on_fill) -> expected<void> {
     auto const it = book.find(id);
-
-    if (it == book.end<Side::Buy>()) {
+    if (it == book.end<Side::Buy>()) [[unlikely]] {
         return std::unexpected{"order not found"};
     }
 
-    if (it->quantity > quantity) {
-        it->quantity -= quantity;
-        decltype(book)::level_iterator{it}->qty -= quantity;
+    if (ops.qty == 0) [[unlikely]] {
+        return std::unexpected{"quantity must be positive"};
+    }
+
+    if (ops.price == it->price) {
+        ops.price.reset();
+    }
+    if (ops.qty == it->quantity) {
+        ops.qty.reset();
+    }
+
+    if (!ops.price && !ops.qty) [[unlikely]] {
+        return std::unexpected{"nothing to modify"};
+    }
+
+    if (!ops.price && ops.qty && *ops.qty < it->quantity) {
+        decltype(book)::level_iterator{it}->qty -= it->quantity - *ops.qty;
+        it->quantity = *ops.qty;
     } else {
+        auto order = *it;
         book.erase(it);
+        if (ops.price) {
+            order.price = *ops.price;
+        }
+        if (ops.qty) {
+            order.quantity = *ops.qty;
+        }
+        add(order, on_fill);
     }
     return {};
 }
@@ -85,6 +91,23 @@ auto Engine::spread() const -> expected<std::pair<Price, Price>> {
     auto const best_ask = it_ask != book.end<Side::Sell>() ? it_ask->price : 0;
 
     return std::pair{best_bid, best_ask};
+}
+
+void Engine::add(RestingOrder order, OrderCallback on_fill) {
+    switch (order.side) {
+    case Side::Buy:
+        execute<Side::Sell>(order, on_fill);
+        if (order.quantity > 0) {
+            book.emplace<Side::Buy>({order, order.order_id});
+        }
+        break;
+    case Side::Sell:
+        execute<Side::Buy>(order, on_fill);
+        if (order.quantity > 0) {
+            book.emplace<Side::Sell>({order, order.order_id});
+        }
+        break;
+    }
 }
 
 template <Side S> void Engine::execute(Order &order, OrderCallback on_fill) {

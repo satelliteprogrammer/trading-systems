@@ -5,6 +5,7 @@
 #include <lobster/reconstructor.hpp>
 #include <lobster/types.hpp>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
@@ -87,6 +88,22 @@ class LobsterReplay {
     auto apply(Trade const &trade, book::Engine &book, Run &&run)
         -> std::expected<void, std::string_view> {
         auto const op = trade.index();
+
+        // LOBSTER reports the shares removed, while the book takes the order's new total
+        auto const reduce = [&](book::OrderId external_id,
+                                std::uint64_t quantity) -> std::expected<void, std::string_view> {
+            return book_order(external_id)
+                .and_then([&](BookOrder *order) -> std::expected<void, std::string_view> {
+                    order->quantity -= std::min(quantity, order->quantity);
+                    if (order->quantity == 0) {
+                        return run(op, [&] -> auto { return book.cancel(order->id); });
+                    }
+                    return run(op, [&] -> auto {
+                        return book.modify(order->id, {.qty = order->quantity});
+                    });
+                });
+        };
+
         return std::visit(
             overloaded{
                 [&](NewOrder const &new_order) -> std::expected<void, std::string_view> {
@@ -94,19 +111,18 @@ class LobsterReplay {
                     if (!id) {
                         return std::unexpected{id.error()};
                     }
-                    id_map_[new_order.order_id] = *id;
+                    id_map_[new_order.order_id] = {.id = *id, .quantity = new_order.order.quantity};
                     return {};
                 },
                 [&](PartialCancel const &partial_cancel) -> std::expected<void, std::string_view> {
-                    return book_id(partial_cancel.order_id).and_then([&](auto id) -> auto {
-                        return run(
-                            op, [&] -> auto { return book.cancel(id, partial_cancel.quantity); });
-                    });
+                    return reduce(partial_cancel.order_id, partial_cancel.quantity);
                 },
                 [&](Cancel const &cancel) -> std::expected<void, std::string_view> {
-                    return book_id(cancel.order_id).and_then([&](auto id) -> auto {
-                        return run(op, [&] -> auto { return book.cancel(id); });
-                    });
+                    return book_order(cancel.order_id)
+                        .and_then([&](BookOrder *order) -> std::expected<void, std::string_view> {
+                            order->quantity = 0;
+                            return run(op, [&] -> auto { return book.cancel(order->id); });
+                        });
                 },
                 [&](Execute const &execute) -> std::expected<void, std::string_view> {
                     if (execute.hidden) {
@@ -114,11 +130,8 @@ class LobsterReplay {
                         return {};
                     }
                     // LOBSTER EXECUTE messages tell us which resting order was
-                    // executed. Use cancel to reduce that specific order.
-                    return book_id(execute.order_id).and_then([&](auto id) -> auto {
-                        return run(op,
-                                   [&] -> auto { return book.cancel(id, execute.order.quantity); });
-                    });
+                    // executed. Use modify to reduce that specific order.
+                    return reduce(execute.order_id, execute.order.quantity);
                 },
                 [&](Halt const &) -> std::expected<void, std::string_view> { return {}; },
             },
@@ -126,13 +139,19 @@ class LobsterReplay {
     }
 
   private:
-    [[nodiscard]] auto book_id(book::OrderId external_id) const
-        -> std::expected<book::OrderId, std::string_view>;
+    // book id and remaining quantity of an order, tracked here since modify takes the new total
+    struct BookOrder {
+        book::OrderId id{};
+        std::uint64_t quantity{};
+    };
+
+    [[nodiscard]] auto book_order(book::OrderId external_id)
+        -> std::expected<BookOrder *, std::string_view>;
 
     std::vector<tools::lobster::Message> messages_;
     std::size_t message_index_{0};
     std::vector<tools::lobster::ExpectedOrderbook> expected_orderbooks_;
-    std::unordered_map<book::OrderId, book::OrderId> id_map_;
+    std::unordered_map<book::OrderId, BookOrder> id_map_;
 };
 
 } // namespace ome::testing
