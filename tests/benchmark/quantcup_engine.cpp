@@ -42,15 +42,13 @@ void init() { book = Engine{MAX_LIVE_ORDERS}; }
 
 void destroy() { book = Engine{}; }
 
-// quantcup requires ids to start at 1; the book's ids start at 0, so shift by one.
-
 auto limit(t_order order) -> t_orderid {
     auto const side = is_ask(order.side) != 0 ? Side::Sell : Side::Buy;
     Order const book_order{{order.size}, side, order.price, {}, std::to_array(order.trader)};
-    return *book.add(book_order, std::bind_front(&execute, order)) + 1;
+    return *book.add(book_order, std::bind_front(&execute, order));
 }
 
-void cancel(t_orderid orderid) { [[maybe_unused]] auto const res = book.cancel(orderid - 1); }
+void cancel(t_orderid orderid) { [[maybe_unused]] auto const res = book.cancel(orderid); }
 
 // NOLINTEND(cppcoreguidelines-pro-bounds-array-to-pointer-decay)
 // NOLINTEND(cppcoreguidelines-avoid-non-const-global-variables)
