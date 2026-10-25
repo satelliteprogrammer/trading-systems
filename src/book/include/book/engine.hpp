@@ -52,7 +52,7 @@ class Engine {
     auto cancel(OrderId, std::uint64_t) -> expected<void>;
 
     /// Returns total volume at given price level.
-    /// time: O(1)
+    /// time: O(log # price levels)
     [[nodiscard]] auto volume(Price) const -> expected<std::uint64_t>;
 
     /// Returns best bid and ask prices.

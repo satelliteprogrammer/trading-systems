@@ -39,6 +39,10 @@ auto make_order(OrderId id, Price price, std::uint64_t quantity = 1) -> RestingO
 
 template <Side S, typename B> auto begin(B &book) { return book.template begin<S>(); }
 template <Side S, typename B> auto end(B &book) { return book.template end<S>(); }
+template <Side S, typename B> auto levels(B &book) { return book.template levels<S>(); }
+template <Side S, typename B> auto find_level(B &book, Price price) {
+    return book.template find<S>(price);
+}
 
 template <Side S, concepts::OrderBook B>
 auto emplace(B &book, OrderId id, Price price, std::uint64_t quantity = 1) {
@@ -49,6 +53,11 @@ auto emplace(B &book, OrderId id, Price price, std::uint64_t quantity = 1) {
 template <Side S, typename B> auto ids(B const &book) {
     return std::ranges::subrange(begin<S>(book), end<S>(book)) |
            std::views::transform(&RestingOrder::order_id);
+}
+
+/// Level quantities on side S, in iteration order.
+template <Side S, typename B> auto level_qtys(B const &book) {
+    return levels<S>(book) | std::views::transform([](auto const &level) { return level.qty; });
 }
 
 } // namespace
@@ -185,6 +194,66 @@ TEMPLATE_LIST_TEST_CASE("Find of an unknown id returns end", "[book]", Books) {
     }
 }
 
+TEMPLATE_LIST_TEST_CASE("Levels iterate in price priority", "[book][level]", Books) {
+    TestType book;
+    emplace<Side::Buy>(book, 1, 100, 1);
+    emplace<Side::Buy>(book, 2, 102, 2);
+    emplace<Side::Buy>(book, 3, 101, 3);
+    emplace<Side::Sell>(book, 4, 111, 4);
+    emplace<Side::Sell>(book, 5, 110, 5);
+
+    REQUIRE_THAT(level_qtys<Side::Buy>(book), RangeEquals<std::uint64_t>({2, 3, 1}));
+    REQUIRE_THAT(level_qtys<Side::Sell>(book), RangeEquals<std::uint64_t>({5, 4}));
+}
+
+TEMPLATE_LIST_TEST_CASE("Levels track the total quantity of their orders", "[book][level]", Books) {
+    TestType book;
+    emplace<Side::Buy>(book, 1, 100, 10);
+    emplace<Side::Buy>(book, 2, 100, 20);
+    emplace<Side::Buy>(book, 3, 99, 5);
+
+    REQUIRE(find_level<Side::Buy>(book, 100)->qty == 30);
+    REQUIRE(find_level<Side::Buy>(book, 99)->qty == 5);
+
+    book.erase(book.find(1));
+    REQUIRE(find_level<Side::Buy>(book, 100)->qty == 20);
+
+    // erasing the last order removes the level
+    book.erase(book.find(2));
+    REQUIRE(find_level<Side::Buy>(book, 100) == levels<Side::Buy>(book).end());
+    REQUIRE_THAT(level_qtys<Side::Buy>(book), RangeEquals<std::uint64_t>({5}));
+}
+
+TEMPLATE_LIST_TEST_CASE("Find of an unknown price returns the end of levels", "[book][level]",
+                        Books) {
+    TestType book;
+
+    SECTION("empty book") {
+        REQUIRE(find_level<Side::Buy>(book, 100) == levels<Side::Buy>(book).end());
+        REQUIRE(find_level<Side::Sell>(book, 100) == levels<Side::Sell>(book).end());
+    }
+
+    SECTION("price only on the other side") {
+        emplace<Side::Sell>(book, 1, 100);
+        REQUIRE(find_level<Side::Buy>(book, 100) == levels<Side::Buy>(book).end());
+        REQUIRE(find_level<Side::Sell>(book, 101) == levels<Side::Sell>(book).end());
+    }
+}
+
+TEMPLATE_LIST_TEST_CASE("A level iterator can be made from an order iterator", "[book][level]",
+                        Books) {
+    // the Engine updates the level's qty when it shrinks an order in place
+    TestType book;
+    emplace<Side::Sell>(book, 1, 110, 10);
+    emplace<Side::Sell>(book, 2, 111, 7);
+
+    auto const level = typename TestType::level_iterator{book.find(2)};
+    REQUIRE(level == find_level<Side::Sell>(book, 111));
+
+    level->qty -= 3;
+    REQUIRE(find_level<Side::Sell>(book, 111)->qty == 4);
+}
+
 // Edge cases
 
 TEMPLATE_LIST_TEST_CASE("An empty side has begin == end", "[book][edge]", Books) {
@@ -265,7 +334,7 @@ TEMPLATE_LIST_TEST_CASE("Extreme prices keep their order", "[book][edge]", Books
 }
 
 TEMPLATE_LIST_TEST_CASE("A const book can be iterated", "[book][edge]", Books) {
-    // the Engine's volume() and spread() iterate a const book
+    // the Engine's spread() iterates a const book
     TestType book;
     emplace<Side::Buy>(book, 1, 100);
     emplace<Side::Buy>(book, 2, 99);
@@ -274,6 +343,17 @@ TEMPLATE_LIST_TEST_CASE("A const book can be iterated", "[book][edge]", Books) {
     auto const it = begin<Side::Buy>(cbook);
     REQUIRE(it->order_id == 1);
     REQUIRE(std::next(it, 2) == end<Side::Buy>(cbook));
+}
+
+TEMPLATE_LIST_TEST_CASE("A const book's levels can be walked", "[book][edge]", Books) {
+    // the Engine's volume() looks up levels of a const book
+    TestType book;
+    emplace<Side::Buy>(book, 1, 100, 3);
+    emplace<Side::Buy>(book, 2, 99, 4);
+
+    auto const &cbook = book;
+    REQUIRE(find_level<Side::Buy>(cbook, 99)->qty == 4);
+    REQUIRE_THAT(level_qtys<Side::Buy>(cbook), RangeEquals<std::uint64_t>({3, 4}));
 }
 
 TEST_CASE("RestingOrder formats with its id", "[order]") {

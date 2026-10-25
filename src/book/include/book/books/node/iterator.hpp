@@ -12,6 +12,8 @@
 
 namespace ome::book::books::node {
 
+template <typename NodeTree> class LevelIterator;
+
 template <typename NodeTree> class Iterator {
   public:
     using iterator_concept = std::forward_iterator_tag;
@@ -41,6 +43,7 @@ template <typename NodeTree> class Iterator {
 
   private:
     friend NodeTree;
+    friend LevelIterator<NodeTree>;
 
     // \warning relies on SCARY iterators (N2982)
     using map_iterator = std::map<Price, Level>::iterator;
@@ -79,6 +82,43 @@ template <typename NodeTree> class Iterator {
     map_iterator level_it_;
     map_iterator level_end_;
     list_iterator order_it_;
+};
+
+template <typename NodeTree> class LevelIterator {
+  public:
+    using iterator_concept = std::forward_iterator_tag;
+
+    using difference_type = std::ptrdiff_t;
+    using value_type = Level;
+
+    constexpr LevelIterator() = default;
+    constexpr explicit LevelIterator(Iterator<NodeTree> it) : level_it_{it.level_it_} {}
+
+    constexpr auto operator*() const -> value_type & { return level_it_->second; }
+    constexpr auto operator->() const -> value_type * { return &level_it_->second; }
+
+    constexpr auto operator++() -> LevelIterator & {
+        ++level_it_;
+        return *this;
+    }
+    constexpr auto operator++(int) -> LevelIterator {
+        auto tmp = *this;
+        ++(*this);
+        return tmp;
+    }
+
+    constexpr auto operator==(LevelIterator const &it) const -> bool = default;
+
+  private:
+    friend NodeTree;
+
+    // \warning relies on SCARY iterators (N2982)
+    using map_iterator = std::map<Price, Level>::iterator;
+
+    // NOLINTNEXTLINE(misc-explicit-constructor)
+    constexpr LevelIterator(map_iterator level_it) : level_it_{level_it} {}
+
+    map_iterator level_it_;
 };
 
 } // namespace ome::book::books::node

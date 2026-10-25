@@ -56,6 +56,7 @@ auto Engine::cancel(OrderId id, std::uint64_t quantity) -> expected<void> {
 
     if (it->quantity > quantity) {
         it->quantity -= quantity;
+        decltype(book)::level_iterator{it}->qty -= quantity;
     } else {
         book.erase(it);
     }
@@ -65,20 +66,13 @@ auto Engine::cancel(OrderId id, std::uint64_t quantity) -> expected<void> {
 auto Engine::volume(Price price) const -> expected<std::uint64_t> {
     std::uint64_t vol{};
 
-    // NOLINTBEGIN(modernize-loop-convert)
-    // given begin/end template Side parameter, the old loop has to stay
-    for (auto it = book.begin<Side::Buy>(); it != book.end<Side::Buy>(); ++it) {
-        if (it->price == price) {
-            vol += it->quantity;
-        }
+    if (auto const itf = book.find<Side::Buy>(price); itf != book.levels<Side::Buy>().end()) {
+        vol += itf->qty;
     }
 
-    for (auto it = book.begin<Side::Sell>(); it != book.end<Side::Sell>(); ++it) {
-        if (it->price == price) {
-            vol += it->quantity;
-        }
+    if (auto const itf = book.find<Side::Sell>(price); itf != book.levels<Side::Sell>().end()) {
+        vol += itf->qty;
     }
-    // NOLINTEND(modernize-loop-convert)
 
     return vol;
 }
@@ -110,6 +104,7 @@ template <Side S> void Engine::execute(Order &order, OrderCallback on_fill) {
 
         if (it->quantity > order.quantity) {
             it->quantity -= order.quantity;
+            decltype(book)::level_iterator{it}->qty -= order.quantity;
             order.quantity = 0;
             break;
         }

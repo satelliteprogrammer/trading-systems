@@ -3,6 +3,7 @@
 #include <book/order.hpp>
 
 #include <array>
+#include <cstdint>
 #include <functional>
 #include <list>
 #include <map>
@@ -12,6 +13,7 @@ namespace ome::book::books::node {
 
 struct Level {
     std::list<RestingOrder> orders;
+    std::uint64_t qty;
 };
 
 class PriceCompare {
