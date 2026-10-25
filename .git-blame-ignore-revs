@@ -9,3 +9,9 @@
 
 # refactor(book): merge buy/sell orders type
 3f0a872c5f5da748e4fbd945c9b65d2694e27d60
+
+# refactor(book): rename lob to engine
+cc400ec28aec7d1d574b83699bc13506eb13ff88
+
+# refactor(book): name node iterator members after levels and orders
+a83f4962d6a03141f4e9e54a0c76e747d18c5e94
