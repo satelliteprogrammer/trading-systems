@@ -11,6 +11,7 @@ jobs:
   validate:
     name: Release-gcc-16
     runs-on: ubuntu-26.04
+    timeout-minutes: 45
 
     env:
       CC: gcc-16
