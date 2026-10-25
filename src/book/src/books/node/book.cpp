@@ -29,15 +29,15 @@ template <Side S> auto Book::emplace(RestingOrder order) -> iterator {
 auto Book::erase(iterator it) -> iterator {
     auto const side = it->side;
 
-    it.inner_it_ = it.outer_it_->second.orders.erase(it.inner_it_);
+    it.order_it_ = it.level_it_->second.orders.erase(it.order_it_);
 
-    if (it.outer_it_->second.orders.empty()) {
+    if (it.level_it_->second.orders.empty()) {
         switch (side) {
         case Side::Buy:
-            it.satisfy(maps_.get<Side::Buy>().erase(it.outer_it_));
+            it.satisfy(maps_.get<Side::Buy>().erase(it.level_it_));
             break;
         case Side::Sell:
-            it.satisfy(maps_.get<Side::Sell>().erase(it.outer_it_));
+            it.satisfy(maps_.get<Side::Sell>().erase(it.level_it_));
         }
     } else {
         it.satisfy();

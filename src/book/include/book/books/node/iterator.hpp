@@ -21,11 +21,11 @@ template <typename NodeTree> class Iterator {
 
     constexpr Iterator() = default;
 
-    constexpr auto operator*() const -> value_type & { return *inner_it_; }
-    constexpr auto operator->() const -> value_type * { return &*inner_it_; }
+    constexpr auto operator*() const -> value_type & { return *order_it_; }
+    constexpr auto operator->() const -> value_type * { return &*order_it_; }
 
     constexpr auto operator++() -> Iterator & {
-        ++inner_it_;
+        ++order_it_;
         satisfy();
         return *this;
     }
@@ -36,7 +36,7 @@ template <typename NodeTree> class Iterator {
     }
 
     constexpr auto operator==(Iterator const &it) const -> bool {
-        return this->inner_it_ == it.inner_it_;
+        return this->order_it_ == it.order_it_;
     }
 
   private:
@@ -46,39 +46,39 @@ template <typename NodeTree> class Iterator {
     using map_iterator = std::map<Price, Level>::iterator;
     using list_iterator = std::list<RestingOrder>::iterator;
 
-    constexpr Iterator(map_iterator outer_it, map_iterator end, list_iterator inner_it)
-        : outer_it_{outer_it}, outer_end_{end}, inner_it_{inner_it} {}
-    constexpr Iterator(map_iterator outer_it, map_iterator end)
-        : outer_it_{outer_it}, outer_end_{end} {
-        if (outer_it != end) {
-            assert(!outer_it->second.orders.empty());
-            inner_it_ = outer_it->second.orders.begin();
+    constexpr Iterator(map_iterator level_it, map_iterator end, list_iterator inner_it)
+        : level_it_{level_it}, level_end_{end}, order_it_{inner_it} {}
+    constexpr Iterator(map_iterator level_it, map_iterator end)
+        : level_it_{level_it}, level_end_{end} {
+        if (level_it != end) {
+            assert(!level_it->second.orders.empty());
+            order_it_ = level_it->second.orders.begin();
         }
     }
     // NOLINTNEXTLINE(misc-explicit-constructor)
-    constexpr Iterator(map_iterator end) : outer_it_{end}, outer_end_{end} {}
+    constexpr Iterator(map_iterator end) : level_it_{end}, level_end_{end} {}
 
-    constexpr void satisfy(std::optional<map_iterator> next_outer_it = std::nullopt) {
-        if (next_outer_it) {
-            outer_it_ = *next_outer_it;
+    constexpr void satisfy(std::optional<map_iterator> next_level_it = std::nullopt) {
+        if (next_level_it) {
+            level_it_ = *next_level_it;
         } else {
-            if (inner_it_ != outer_it_->second.orders.end()) {
+            if (order_it_ != level_it_->second.orders.end()) {
                 return;
             }
-            ++outer_it_;
+            ++level_it_;
         }
 
-        if (outer_it_ != outer_end_) {
-            assert(!outer_it_->second.orders.empty());
-            inner_it_ = outer_it_->second.orders.begin();
+        if (level_it_ != level_end_) {
+            assert(!level_it_->second.orders.empty());
+            order_it_ = level_it_->second.orders.begin();
         } else {
-            inner_it_ = {};
+            order_it_ = {};
         }
     }
 
-    map_iterator outer_it_;
-    map_iterator outer_end_;
-    list_iterator inner_it_;
+    map_iterator level_it_;
+    map_iterator level_end_;
+    list_iterator order_it_;
 };
 
 } // namespace ome::book::books::node
