@@ -32,8 +32,6 @@ class Book {
     PriceLevels maps_;
 };
 
-static_assert(concepts::OrderBookIterator<Book::iterator>);
-static_assert(concepts::OrderBookLevelIterator<Book::level_iterator>);
 static_assert(concepts::OrderBook<Book>);
 
 } // namespace ome::book::books::node

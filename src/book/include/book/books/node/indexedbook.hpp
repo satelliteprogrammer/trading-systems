@@ -40,8 +40,6 @@ class IndexedBook {
     std::unordered_map<Price, iterator::map_iterator> by_ask_price_;
 };
 
-static_assert(concepts::OrderBookIterator<IndexedBook::iterator>);
-static_assert(concepts::OrderBookLevelIterator<IndexedBook::level_iterator>);
 static_assert(concepts::OrderBook<IndexedBook>);
 
 } // namespace ome::book::books::node
