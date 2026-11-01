@@ -1,6 +1,9 @@
+find_package(Boost REQUIRED CONFIG)
+
 add_library(
   book
   STATIC
+    src/books/array/indexedbook.cpp
     src/books/node/book.cpp
     src/books/node/indexedbook.cpp
     src/engine.cpp
@@ -10,6 +13,7 @@ ts_enable_warnings(book)
 target_include_directories(
   book PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
               $<INSTALL_INTERFACE:include>)
+target_link_libraries(book PUBLIC Boost::headers)
 
 if(PROJECT_IS_TOP_LEVEL AND BUILD_TESTING)
 

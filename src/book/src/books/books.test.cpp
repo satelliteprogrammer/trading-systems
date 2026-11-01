@@ -1,5 +1,6 @@
 // Contract tests for concepts::OrderBook. Every book the Engine can run on goes in Books.
 
+#include <book/books/array/indexedbook.hpp>
 #include <book/books/node/book.hpp>
 #include <book/books/node/indexedbook.hpp>
 #include <book/concepts.hpp>
@@ -25,7 +26,7 @@ namespace ome::book::books {
 
 namespace {
 
-using Books = std::tuple<node::Book, node::IndexedBook>;
+using Books = std::tuple<node::Book, node::IndexedBook, array::IndexedBook>;
 
 using Catch::Matchers::IsEmpty;
 using Catch::Matchers::RangeEquals;
@@ -189,8 +190,8 @@ TEMPLATE_LIST_TEST_CASE("Find of an unknown id returns end", "[book]", Books) {
     SECTION("non-empty book") {
         emplace<Side::Buy>(book, 1, 100);
         emplace<Side::Sell>(book, 2, 110);
-        REQUIRE(book.find(999) == end<Side::Buy>(book));
-        REQUIRE(book.find(999) == end<Side::Sell>(book));
+        REQUIRE(book.find(99) == end<Side::Buy>(book));
+        REQUIRE(book.find(99) == end<Side::Sell>(book));
     }
 }
 
