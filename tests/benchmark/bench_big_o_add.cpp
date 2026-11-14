@@ -1,11 +1,11 @@
+#include "book.hpp"
 #include "replay.hpp"
-
-#include <book/engine.hpp>
 
 #include <chrono>
 #include <cstddef>
 #include <cstdlib>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <iostream>
 #include <print>
@@ -15,7 +15,7 @@ namespace chrono = std::chrono;
 namespace fs = std::filesystem;
 
 // Replays a LOBSTER day through the book, timing every book operation into
-// results.csv (op-id,nanoseconds per line). Pure measurement: the book state
+// results-<book>.csv (op-id,nanoseconds per line). Pure measurement: the book state
 // is not validated between operations so the timings stay undisturbed (see
 // lobster_validate for correctness checks).
 auto main(int argc, char *argv[]) -> int {
@@ -28,8 +28,9 @@ auto main(int argc, char *argv[]) -> int {
 
     try {
         LobsterReplay replay{fs::path{argv[1]}, fs::path{argv[2]}};
-        ome::book::Engine book;
-        std::ofstream results{"results.csv"};
+        Engine book;
+        auto const out = std::format("results-{}.csv", book_name);
+        std::ofstream results{out};
 
         auto timed = [&](std::size_t op, auto const &call) -> auto {
             auto const start = chrono::high_resolution_clock::now();
@@ -53,7 +54,7 @@ auto main(int argc, char *argv[]) -> int {
             }
         }
 
-        std::println("Replayed all {} messages", trade_id);
+        std::println("Replayed all {} messages into {}, timings in {}", trade_id, book_name, out);
     } catch (std::runtime_error &e) {
         std::println(std::cerr, "{}", e.what());
         return EXIT_FAILURE;

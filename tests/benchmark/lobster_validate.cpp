@@ -1,6 +1,5 @@
+#include "book.hpp"
 #include "replay.hpp"
-
-#include <book/engine.hpp>
 
 #include <cstddef>
 #include <cstdlib>
@@ -24,7 +23,7 @@ auto main(int argc, char *argv[]) -> int {
 
     try {
         LobsterReplay replay{fs::path{argv[1]}, fs::path{argv[2]}};
-        ome::book::Engine book;
+        Engine book;
 
         auto uninstrumented = [](std::size_t /*op*/, auto const &call) -> auto { return call(); };
 
@@ -40,8 +39,8 @@ auto main(int argc, char *argv[]) -> int {
 
             auto validation = replay.validate(book);
             if (!validation.valid) {
-                std::println(std::cerr, "Validation failed at message {}: {}\n{}", trade_id,
-                             *trade, validation);
+                std::println(std::cerr, "Validation failed at message {}: {}\n{}", trade_id, *trade,
+                             validation);
                 return EXIT_FAILURE;
             }
         }

@@ -1,10 +1,8 @@
-// Contract tests for concepts::OrderBook. Every book the Engine can run on goes in Books.
+// Contract tests for concepts::OrderBook.
 
-#include <book/books/array/indexedbook.hpp>
-#include <book/books/node/book.hpp>
-#include <book/books/node/indexedbook.hpp>
 #include <book/concepts.hpp>
 #include <book/order.hpp>
+#include <testing/books.hpp>
 
 #include <catch2/catch_template_test_macros.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -17,7 +15,6 @@
 #include <iterator>
 #include <limits>
 #include <ranges>
-#include <tuple>
 #include <vector>
 
 namespace ome::book::books {
@@ -26,7 +23,7 @@ namespace ome::book::books {
 
 namespace {
 
-using Books = std::tuple<node::Book, node::IndexedBook, array::IndexedBook>;
+using namespace ome::testing;
 
 using Catch::Matchers::IsEmpty;
 using Catch::Matchers::RangeEquals;

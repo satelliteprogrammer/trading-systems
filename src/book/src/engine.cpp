@@ -152,6 +152,7 @@ void BasicEngine<Book>::execute(Order &order, OrderCallback on_fill) {
     }
 }
 
+// Also listed in testing::Books and cmake/Books.cmake.
 template class BasicEngine<books::node::Book>;
 template class BasicEngine<books::node::IndexedBook>;
 template class BasicEngine<books::array::IndexedBook>;

@@ -1,6 +1,7 @@
 #include "replay.hpp"
 
-#include <book/engine.hpp>
+#include "book.hpp"
+
 #include <book/order.hpp>
 #include <lobster/reconstructor.hpp>
 #include <lobster/types.hpp>
@@ -35,7 +36,7 @@ LobsterReplay::LobsterReplay(fs::path const &message_file, fs::path const &order
     expected_orderbooks_ = std::move(reconstructor).expected_orderbooks();
     std::println("Messages loaded.");
 
-    id_map_.reserve(book::Engine::default_max_orders);
+    id_map_.reserve(Engine::default_max_orders);
 }
 
 auto LobsterReplay::next() -> std::optional<Trade> {
@@ -46,7 +47,7 @@ auto LobsterReplay::next() -> std::optional<Trade> {
     return message_to_trade(msg);
 }
 
-auto LobsterReplay::validate(book::Engine const &book) const -> ValidationResult {
+auto LobsterReplay::validate(Engine const &book) const -> ValidationResult {
     auto previous_message = messages_[message_index_ - 1];
     auto idx = previous_message.index;
     if (!idx) {

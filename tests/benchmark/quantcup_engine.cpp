@@ -1,3 +1,5 @@
+#include "book.hpp"
+
 #include <book/engine.hpp>
 #include <book/order.hpp>
 
@@ -19,7 +21,7 @@ using namespace ome::book;
 
 namespace {
 
-std::optional<Engine> book;
+std::optional<ome::testing::Engine> book;
 
 auto execute(t_order const &order, OrderId /*id*/, Order const &order_, Price price,
              std::uint64_t quantity) {
