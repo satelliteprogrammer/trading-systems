@@ -1,6 +1,7 @@
 #pragma once
 
 #include <book/books/node/indexedbook.hpp>
+#include <book/concepts.hpp>
 #include <book/order.hpp>
 
 #include <cstddef>
@@ -26,8 +27,12 @@ struct ModifyOps {
     std::optional<std::uint64_t> qty = std::nullopt;
 };
 
-class Engine {
+/// Matching engine over an order book. Only the books in books::All are instantiated (in
+/// engine.cpp); any other book fails to link.
+template <concepts::OrderBook Book> class BasicEngine {
   public:
+    using book_type = Book;
+
     /// Called once per fill with the id of the resting order, the resting order itself,
     /// the execution price and the executed quantity.
 #if __cpp_lib_function_ref >= 202306L
@@ -35,13 +40,22 @@ class Engine {
 #else
     using OrderCallback = std::function<void(OrderId, Order const &, Price, std::uint64_t)> const &;
 #endif
-    static constexpr auto default_callback = [](OrderId, Order const &, Price,
-                                                std::uint64_t) -> void {};
+    struct IgnoreFills {
+        constexpr void operator()(OrderId, Order const &, Price, std::uint64_t) const noexcept {}
+    };
+    static constexpr IgnoreFills default_callback{};
 
     static constexpr std::size_t default_max_orders = 1'000'000;
 
-    /// \param max_orders expected number of orders; currently unused.
-    explicit Engine(std::size_t max_orders = default_max_orders);
+    /// \param max_orders exclusive bound on order ids, which start at 1 and are never reused; sizes
+    /// the book.
+    explicit BasicEngine(std::size_t max_orders = default_max_orders);
+
+    BasicEngine(BasicEngine const &) = delete;
+    auto operator=(BasicEngine const &) -> BasicEngine & = delete;
+    BasicEngine(BasicEngine &&) = delete;
+    auto operator=(BasicEngine &&) -> BasicEngine & = delete;
+    ~BasicEngine() = default;
 
     /// Adds order to the book, matching it first against the opposite side.
     ///
@@ -72,13 +86,18 @@ class Engine {
     [[nodiscard]] auto spread() const -> expected<std::pair<Price, Price>>;
 
   private:
+    using level_iterator = Book::level_iterator;
+
     void add(RestingOrder order, OrderCallback on_fill);
 
     /// Matches order against the opposite side's levels, best price first.
     template <Side> void execute(Order &order, OrderCallback on_fill);
 
-    books::node::IndexedBook book;
+    Book book;
     OrderId cur_order_id_{0};
 };
+
+/// The engine used in production.
+using Engine = BasicEngine<books::node::IndexedBook>;
 
 } // namespace ome::book
