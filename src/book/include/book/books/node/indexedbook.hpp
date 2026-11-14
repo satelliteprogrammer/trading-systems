@@ -18,7 +18,7 @@ class IndexedBook {
     using iterator = Iterator<IndexedBook>;
     using level_iterator = LevelIterator<IndexedBook>;
 
-    /// \param max_orders unused: orders are allocated as they are added.
+    /// \param max_orders number of order ids to reserve in the id index.
     explicit IndexedBook(std::size_t max_orders = std::numeric_limits<std::uint8_t>::max());
 
     template <Side> [[nodiscard]] auto begin() const -> iterator;
