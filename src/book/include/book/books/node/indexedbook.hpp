@@ -5,6 +5,9 @@
 #include <book/concepts.hpp>
 #include <book/order.hpp>
 
+#include <cstddef>
+#include <cstdint>
+#include <limits>
 #include <ranges>
 #include <unordered_map>
 
@@ -14,6 +17,8 @@ class IndexedBook {
   public:
     using iterator = Iterator<IndexedBook>;
     using level_iterator = LevelIterator<IndexedBook>;
+
+    explicit IndexedBook(std::size_t max_orders = std::numeric_limits<std::uint8_t>::max());
 
     template <Side> [[nodiscard]] auto begin() const -> iterator;
     template <Side> auto begin() -> iterator;

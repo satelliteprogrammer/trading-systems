@@ -4,10 +4,13 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cstddef>
 #include <iterator>
 #include <ranges>
 
 namespace ome::book::books::node {
+
+Book::Book(std::size_t /*max_orders*/) {}
 
 template <Side S> auto Book::begin() const -> iterator {
     return const_cast<Book *>(this)->begin<S>();

@@ -5,6 +5,9 @@
 #include <book/concepts.hpp>
 #include <book/order.hpp>
 
+#include <cstddef>
+#include <cstdint>
+#include <limits>
 #include <ranges>
 
 namespace ome::book::books::node {
@@ -13,6 +16,8 @@ class Book {
   public:
     using iterator = Iterator<Book>;
     using level_iterator = LevelIterator<Book>;
+
+    explicit Book(std::size_t max_orders = std::numeric_limits<std::uint8_t>::max());
 
     template <Side> [[nodiscard]] auto begin() const -> iterator;
     template <Side> auto begin() -> iterator;
