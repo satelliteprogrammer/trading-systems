@@ -3,6 +3,7 @@
 #include <book/order.hpp>
 
 #include <concepts>
+#include <cstddef>
 #include <cstdint>
 #include <iterator>
 #include <ranges>
@@ -43,7 +44,7 @@ concept OrderBookSide = IterableSide<T, S> && IterableSide<T const, S> &&
                         };
 
 template <typename T>
-concept OrderBook = std::default_initializable<T> && OrderBookIterator<iterator_t<T>> &&
+concept OrderBook = std::constructible_from<T, std::size_t> && OrderBookIterator<iterator_t<T>> &&
                     OrderBookLevelIterator<level_iterator_t<T>> &&
                     std::constructible_from<level_iterator_t<T>, iterator_t<T>> &&
                     !std::convertible_to<iterator_t<T>, level_iterator_t<T>> &&
