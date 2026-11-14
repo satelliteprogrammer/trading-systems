@@ -65,7 +65,7 @@ struct ValidationResult {
 
 auto message_to_trade(tools::lobster::Message const &msg) -> Trade;
 
-// Replays the reconstructed LOBSTER stream into an Engine. LOBSTER ids are
+// Replays the reconstructed LOBSTER stream into an engine. LOBSTER ids are
 // sparse exchange-assigned reference numbers; the book assigns its own dense
 // ids, so they are translated at the boundary. Lookups happen outside the
 // instrumented calls so only book operations are measured by callers timing
@@ -77,15 +77,49 @@ class LobsterReplay {
 
     auto next() -> std::optional<Trade>;
 
+    // Restarts from the first message, to replay into another, empty, engine.
+    void rewind();
+
     // Checks the book against the expected orderbook line of the last
     // replayed message; synthetic messages have no line to compare against.
-    [[nodiscard]] auto validate(book::Engine const &book) const -> ValidationResult;
+    template <typename Engine>
+    [[nodiscard]] auto validate(Engine const &book) const -> ValidationResult {
+        auto const &previous_message = messages_[message_index_ - 1];
+        auto const idx = previous_message.index;
+        if (!idx) {
+            // last message was synthetic, no expected orderbook line to compare against
+            return {.valid = true};
+        }
+
+        auto const check = [&](auto const &levels,
+                               tools::lobster::Direction direction) -> ValidationResult {
+            for (auto const &expected : levels) {
+                if (auto actual_qty = book.volume(expected.price);
+                    actual_qty != expected.quantity) {
+                    return {
+                        .valid = false,
+                        .message = previous_message,
+                        .expected_direction = direction,
+                        .expected = expected,
+                        .actual = {.price = expected.price, .quantity = actual_qty.value()},
+                    };
+                }
+            }
+            return {.valid = true};
+        };
+
+        if (auto result = check(expected_orderbooks_[*idx].bids, tools::lobster::Direction::BUY);
+            !result.valid) {
+            return result;
+        }
+        return check(expected_orderbooks_[*idx].asks, tools::lobster::Direction::SELL);
+    }
 
     // Applies the trade to the book, wrapping every book operation in
     // run(op, call) where op is the Trade variant index, so callers can
     // instrument the calls.
-    template <typename Run>
-    auto apply(Trade const &trade, book::Engine &book, Run &&run)
+    template <typename Engine, typename Run>
+    auto apply(Trade const &trade, Engine &book, Run &&run)
         -> std::expected<void, std::string_view> {
         auto const op = trade.index();
 

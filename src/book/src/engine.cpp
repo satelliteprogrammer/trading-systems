@@ -1,5 +1,9 @@
 #include "book/engine.hpp"
 
+#include <book/books/array/indexedbook.hpp>
+#include <book/books/node/book.hpp>
+#include <book/books/node/indexedbook.hpp>
+#include <book/concepts.hpp>
 #include <book/order.hpp>
 
 #include <cassert>
@@ -11,18 +15,20 @@
 
 namespace ome::book {
 
-Engine::Engine(std::size_t /*max_orders*/) {}
+template <concepts::OrderBook Book>
+BasicEngine<Book>::BasicEngine(std::size_t max_orders) : book{max_orders} {}
 
-auto Engine::add(Order order, OrderCallback on_fill) -> expected<OrderId> {
+template <concepts::OrderBook Book>
+auto BasicEngine<Book>::add(Order order, OrderCallback on_fill) -> expected<OrderId> {
     auto const id = ++cur_order_id_;
     add({order, id}, on_fill);
     return id;
 }
 
-auto Engine::cancel(OrderId id) -> expected<void> {
+template <concepts::OrderBook Book> auto BasicEngine<Book>::cancel(OrderId id) -> expected<void> {
     auto const it = book.find(id);
 
-    if (it == book.end<Side::Buy>()) {
+    if (it == book.template end<Side::Buy>()) {
         return std::unexpected{"order not found"};
     }
 
@@ -31,9 +37,10 @@ auto Engine::cancel(OrderId id) -> expected<void> {
     return {};
 }
 
-auto Engine::modify(OrderId id, ModifyOps ops, OrderCallback on_fill) -> expected<void> {
+template <concepts::OrderBook Book>
+auto BasicEngine<Book>::modify(OrderId id, ModifyOps ops, OrderCallback on_fill) -> expected<void> {
     auto const it = book.find(id);
-    if (it == book.end<Side::Buy>()) [[unlikely]] {
+    if (it == book.template end<Side::Buy>()) [[unlikely]] {
         return std::unexpected{"order not found"};
     }
 
@@ -53,7 +60,7 @@ auto Engine::modify(OrderId id, ModifyOps ops, OrderCallback on_fill) -> expecte
     }
 
     if (!ops.price && ops.qty && *ops.qty < it->quantity) {
-        decltype(book)::level_iterator{it}->qty -= it->quantity - *ops.qty;
+        level_iterator{it}->qty -= it->quantity - *ops.qty;
         it->quantity = *ops.qty;
     } else {
         auto order = *it;
@@ -69,48 +76,55 @@ auto Engine::modify(OrderId id, ModifyOps ops, OrderCallback on_fill) -> expecte
     return {};
 }
 
-auto Engine::volume(Price price) const -> expected<std::uint64_t> {
+template <concepts::OrderBook Book>
+auto BasicEngine<Book>::volume(Price price) const -> expected<std::uint64_t> {
     std::uint64_t vol{};
 
-    if (auto const itf = book.find<Side::Buy>(price); itf != book.levels<Side::Buy>().end()) {
+    if (auto const itf = book.template find<Side::Buy>(price);
+        itf != book.template levels<Side::Buy>().end()) {
         vol += itf->qty;
     }
 
-    if (auto const itf = book.find<Side::Sell>(price); itf != book.levels<Side::Sell>().end()) {
+    if (auto const itf = book.template find<Side::Sell>(price);
+        itf != book.template levels<Side::Sell>().end()) {
         vol += itf->qty;
     }
 
     return vol;
 }
 
-auto Engine::spread() const -> expected<std::pair<Price, Price>> {
-    auto const it_bid = book.begin<Side::Buy>();
-    auto const best_bid = it_bid != book.end<Side::Buy>() ? it_bid->price : 0;
+template <concepts::OrderBook Book>
+auto BasicEngine<Book>::spread() const -> expected<std::pair<Price, Price>> {
+    auto const it_bid = book.template begin<Side::Buy>();
+    auto const best_bid = it_bid != book.template end<Side::Buy>() ? it_bid->price : 0;
 
-    auto const it_ask = book.begin<Side::Sell>();
-    auto const best_ask = it_ask != book.end<Side::Sell>() ? it_ask->price : 0;
+    auto const it_ask = book.template begin<Side::Sell>();
+    auto const best_ask = it_ask != book.template end<Side::Sell>() ? it_ask->price : 0;
 
     return std::pair{best_bid, best_ask};
 }
 
-void Engine::add(RestingOrder order, OrderCallback on_fill) {
+template <concepts::OrderBook Book>
+void BasicEngine<Book>::add(RestingOrder order, OrderCallback on_fill) {
     switch (order.side) {
     case Side::Buy:
         execute<Side::Sell>(order, on_fill);
         if (order.quantity > 0) {
-            book.emplace<Side::Buy>({order, order.order_id});
+            book.template emplace<Side::Buy>({order, order.order_id});
         }
         break;
     case Side::Sell:
         execute<Side::Buy>(order, on_fill);
         if (order.quantity > 0) {
-            book.emplace<Side::Sell>({order, order.order_id});
+            book.template emplace<Side::Sell>({order, order.order_id});
         }
         break;
     }
 }
 
-template <Side S> void Engine::execute(Order &order, OrderCallback on_fill) {
+template <concepts::OrderBook Book>
+template <Side S>
+void BasicEngine<Book>::execute(Order &order, OrderCallback on_fill) {
 
     auto const comp = [] {
         if constexpr (S == Side::Buy) {
@@ -120,14 +134,14 @@ template <Side S> void Engine::execute(Order &order, OrderCallback on_fill) {
         }
     };
 
-    for (auto it = book.begin<S>();
-         it != book.end<S>() && !comp()(order.price, (*it).price) && order.quantity > 0;) {
+    for (auto it = book.template begin<S>();
+         it != book.template end<S>() && !comp()(order.price, (*it).price) && order.quantity > 0;) {
 
         on_fill(it->order_id, *it, it->price, std::min(order.quantity, it->quantity));
 
         if (it->quantity > order.quantity) {
             it->quantity -= order.quantity;
-            decltype(book)::level_iterator{it}->qty -= order.quantity;
+            level_iterator{it}->qty -= order.quantity;
             order.quantity = 0;
             break;
         }
@@ -137,5 +151,9 @@ template <Side S> void Engine::execute(Order &order, OrderCallback on_fill) {
         it = book.erase(it);
     }
 }
+
+template class BasicEngine<books::node::Book>;
+template class BasicEngine<books::node::IndexedBook>;
+template class BasicEngine<books::array::IndexedBook>;
 
 } // namespace ome::book

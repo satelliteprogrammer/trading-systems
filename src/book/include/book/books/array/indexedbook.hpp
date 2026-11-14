@@ -18,6 +18,7 @@ class IndexedBook {
     using iterator = Iterator<IndexedBook>;
     using level_iterator = LevelIterator<IndexedBook>;
 
+    /// \param max_orders number of order slots: order ids must be below it.
     explicit IndexedBook(std::size_t max_orders = std::numeric_limits<std::uint8_t>::max());
 
     template <Side> [[nodiscard]] auto begin() const -> iterator;

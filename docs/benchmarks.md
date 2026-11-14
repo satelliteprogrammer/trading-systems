@@ -1,5 +1,20 @@
 # Benchmarks
 
+## Comparing books
+
+`ome::book::BasicEngine<Book>` runs on any `concepts::OrderBook`; production code uses the
+`ome::book::Engine` alias. Every book is registered in `book/books/all.hpp` (`books::All`) and the
+benchmarks drive each of them:
+
+- `bench_big_o_add <messages> <orderbook> [book]` loads a LOBSTER day once and replays it into a
+  fresh engine per book (all of them by default), writing `results-<book>.csv`.
+- `lobster_validate <messages> <orderbook> [book]` checks a book against the recorded snapshots;
+  it defaults to the production book, pass `all` to check every book.
+- `quantcup_test_<book>` and `quantcup_score_<book>` are built once per book, as the QuantCup
+  drivers call a C API backed by a single global engine.
+
+Book names are `node-book`, `node-indexedbook` and `array-indexedbook`.
+
 ## QuantCup 1
 
 "A quant trading themed programming contest" to develop a "Price-Time Matching Engine".
@@ -40,7 +55,7 @@ To improve it, if a caller wants to be notified of filled orders, it must pass a
 The previous flamegraphs show the pre and post call graphs and were generated from a GCC debug build with:
 
 ```
-sudo perf record -ag -F 99 build/tests/benchmark/quantcup_score
+sudo perf record -ag -F 99 build/tests/benchmark/quantcup_score_node-indexedbook
 sudo perf script report flamegraph
 ```
 

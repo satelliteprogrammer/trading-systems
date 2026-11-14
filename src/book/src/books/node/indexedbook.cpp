@@ -3,6 +3,7 @@
 #include <book/order.hpp>
 
 #include <cassert>
+#include <cstddef>
 #include <iterator>
 #include <ranges>
 #include <tuple>
@@ -23,6 +24,8 @@ template <Side S> constexpr auto IndexedBook::by_price_map() -> auto & {
         static_assert(false, "invalid side");
     }
 }
+
+IndexedBook::IndexedBook(std::size_t max_orders) { by_order_id_.reserve(max_orders); }
 
 template <Side S> auto IndexedBook::begin() const -> iterator {
     return const_cast<IndexedBook *>(this)->begin<S>();

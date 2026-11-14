@@ -35,19 +35,33 @@ if(LOBSTER_VALIDATION)
   endforeach()
 endif()
 
-add_executable(quantcup_test quantcup_engine.cpp)
-target_compile_features(quantcup_test PRIVATE cxx_std_26)
-target_link_libraries(quantcup_test PRIVATE book quantcup quantcup_test_driver)
-ts_enable_warnings(quantcup_test)
+# Names must match books::name<Book> (book/books/all.hpp).
+set(QUANTCUP_BOOKS
+    "node-book=ome::book::books::node::Book"
+    "node-indexedbook=ome::book::books::node::IndexedBook"
+    "array-indexedbook=ome::book::books::array::IndexedBook")
 
-# The autotester always exits 0, so pass only when it reports every test correct.
-add_test(NAME quantcup_test COMMAND quantcup_test)
-set_tests_properties(quantcup_test PROPERTIES PASS_REGULAR_EXPRESSION
-                                              "You got 14/14 tests correct")
+foreach(entry IN LISTS QUANTCUP_BOOKS)
+  string(REPLACE "=" ";" entry "${entry}")
+  list(GET entry 0 name)
+  list(GET entry 1 type)
 
-if(TARGET quantcup_score_driver)
-  add_executable(quantcup_score quantcup_engine.cpp)
-  target_compile_features(quantcup_score PRIVATE cxx_std_26)
-  target_link_libraries(quantcup_score PRIVATE book quantcup quantcup_score_driver m rt)
-  ts_enable_warnings(quantcup_score)
-endif()
+  add_executable(quantcup_test_${name} quantcup_engine.cpp)
+  target_compile_features(quantcup_test_${name} PRIVATE cxx_std_26)
+  target_compile_definitions(quantcup_test_${name} PRIVATE QUANTCUP_BOOK=${type})
+  target_link_libraries(quantcup_test_${name} PRIVATE book quantcup quantcup_test_driver)
+  ts_enable_warnings(quantcup_test_${name})
+
+  # The autotester always exits 0, so pass only when it reports every test correct.
+  add_test(NAME quantcup_test_${name} COMMAND quantcup_test_${name})
+  set_tests_properties(quantcup_test_${name} PROPERTIES PASS_REGULAR_EXPRESSION
+                                                        "You got 14/14 tests correct")
+
+  if(TARGET quantcup_score_driver)
+    add_executable(quantcup_score_${name} quantcup_engine.cpp)
+    target_compile_features(quantcup_score_${name} PRIVATE cxx_std_26)
+    target_compile_definitions(quantcup_score_${name} PRIVATE QUANTCUP_BOOK=${type})
+    target_link_libraries(quantcup_score_${name} PRIVATE book quantcup quantcup_score_driver m rt)
+    ts_enable_warnings(quantcup_score_${name})
+  endif()
+endforeach()

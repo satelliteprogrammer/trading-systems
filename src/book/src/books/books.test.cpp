@@ -1,8 +1,6 @@
-// Contract tests for concepts::OrderBook. Every book the Engine can run on goes in Books.
+// Contract tests for concepts::OrderBook.
 
-#include <book/books/array/indexedbook.hpp>
-#include <book/books/node/book.hpp>
-#include <book/books/node/indexedbook.hpp>
+#include <book/books/all.hpp>
 #include <book/concepts.hpp>
 #include <book/order.hpp>
 
@@ -17,7 +15,6 @@
 #include <iterator>
 #include <limits>
 #include <ranges>
-#include <tuple>
 #include <vector>
 
 namespace ome::book::books {
@@ -25,8 +22,6 @@ namespace ome::book::books {
 // NOLINTBEGIN(readability-magic-numbers)
 
 namespace {
-
-using Books = std::tuple<node::Book, node::IndexedBook, array::IndexedBook>;
 
 using Catch::Matchers::IsEmpty;
 using Catch::Matchers::RangeEquals;
@@ -61,298 +56,293 @@ template <Side S, typename B> auto level_qtys(B const &book) {
     return levels<S>(book) | std::views::transform([](auto const &level) { return level.qty; });
 }
 
+template <concepts::OrderBook Book> struct BookFixture {
+    Book book;
+};
+
 } // namespace
 
-TEMPLATE_LIST_TEST_CASE("Emplace returns an iterator to the emplaced order", "[book]", Books) {
-    TestType book;
-
+TEMPLATE_LIST_TEST_CASE_METHOD(BookFixture, "Emplace returns an iterator to the emplaced order",
+                               "[book]", All) {
     SECTION("buy") {
-        auto it = emplace<Side::Buy>(book, 42, 100, 7);
+        auto it = emplace<Side::Buy>(this->book, 42, 100, 7);
         REQUIRE(it->order_id == 42);
         REQUIRE(it->price == 100);
         REQUIRE(it->quantity == 7);
-        REQUIRE(it == book.find(42));
-        REQUIRE(it == begin<Side::Buy>(book));
-        REQUIRE(++it == end<Side::Buy>(book));
+        REQUIRE(it == this->book.find(42));
+        REQUIRE(it == begin<Side::Buy>(this->book));
+        REQUIRE(++it == end<Side::Buy>(this->book));
     }
 
     SECTION("sell") {
-        auto it = emplace<Side::Sell>(book, 42, 110, 7);
+        auto it = emplace<Side::Sell>(this->book, 42, 110, 7);
         REQUIRE(it->order_id == 42);
         REQUIRE(it->price == 110);
         REQUIRE(it->quantity == 7);
-        REQUIRE(it == book.find(42));
-        REQUIRE(it == begin<Side::Sell>(book));
-        REQUIRE(++it == end<Side::Sell>(book));
+        REQUIRE(it == this->book.find(42));
+        REQUIRE(it == begin<Side::Sell>(this->book));
+        REQUIRE(++it == end<Side::Sell>(this->book));
     }
 }
 
-TEMPLATE_LIST_TEST_CASE("Each side iterates in price-time priority", "[book]", Books) {
-    TestType book;
-    emplace<Side::Buy>(book, 1, 100);
-    emplace<Side::Sell>(book, 2, 110);
-    emplace<Side::Buy>(book, 3, 102);
-    emplace<Side::Sell>(book, 4, 108);
-    emplace<Side::Buy>(book, 5, 100);
-    emplace<Side::Sell>(book, 6, 110);
-    emplace<Side::Buy>(book, 7, 101);
-    emplace<Side::Sell>(book, 8, 109);
+TEMPLATE_LIST_TEST_CASE_METHOD(BookFixture, "Each side iterates in price-time priority", "[book]",
+                               All) {
+    emplace<Side::Buy>(this->book, 1, 100);
+    emplace<Side::Sell>(this->book, 2, 110);
+    emplace<Side::Buy>(this->book, 3, 102);
+    emplace<Side::Sell>(this->book, 4, 108);
+    emplace<Side::Buy>(this->book, 5, 100);
+    emplace<Side::Sell>(this->book, 6, 110);
+    emplace<Side::Buy>(this->book, 7, 101);
+    emplace<Side::Sell>(this->book, 8, 109);
 
     // bids highest price first, asks lowest price first, FIFO within a price
-    REQUIRE_THAT(ids<Side::Buy>(book), RangeEquals<OrderId>({3, 7, 1, 5}));
-    REQUIRE_THAT(ids<Side::Sell>(book), RangeEquals<OrderId>({4, 8, 2, 6}));
+    REQUIRE_THAT(ids<Side::Buy>(this->book), RangeEquals<OrderId>({3, 7, 1, 5}));
+    REQUIRE_THAT(ids<Side::Sell>(this->book), RangeEquals<OrderId>({4, 8, 2, 6}));
 }
 
-TEMPLATE_LIST_TEST_CASE("Post-increment returns the previous position", "[book]", Books) {
-    TestType book;
-    emplace<Side::Buy>(book, 1, 100);
-    emplace<Side::Buy>(book, 2, 100);
+TEMPLATE_LIST_TEST_CASE_METHOD(BookFixture, "Post-increment returns the previous position",
+                               "[book]", All) {
+    emplace<Side::Buy>(this->book, 1, 100);
+    emplace<Side::Buy>(this->book, 2, 100);
 
-    auto it = begin<Side::Buy>(book);
+    auto it = begin<Side::Buy>(this->book);
     auto const old = it++;
     REQUIRE(old->order_id == 1);
     REQUIRE(it->order_id == 2);
 }
 
-TEMPLATE_LIST_TEST_CASE("Orders can be modified through an iterator", "[book]", Books) {
+TEMPLATE_LIST_TEST_CASE_METHOD(BookFixture, "Orders can be modified through an iterator", "[book]",
+                               All) {
     // the Engine shrinks resting orders in place on partial fills and quantity decreases
-    TestType book;
-    emplace<Side::Sell>(book, 1, 110, 10);
+    emplace<Side::Sell>(this->book, 1, 110, 10);
 
-    book.find(1)->quantity = 4;
-    REQUIRE(begin<Side::Sell>(book)->quantity == 4);
+    this->book.find(1)->quantity = 4;
+    REQUIRE(begin<Side::Sell>(this->book)->quantity == 4);
 }
 
-TEMPLATE_LIST_TEST_CASE("Erase returns the next order on the same side", "[book]", Books) {
+TEMPLATE_LIST_TEST_CASE_METHOD(BookFixture, "Erase returns the next order on the same side",
+                               "[book]", All) {
     // bids: 102 [1], 101 [2 3 4], 100 [5]
     // asks: 110 [6], 111 [7]
-    TestType book;
-    emplace<Side::Buy>(book, 1, 102);
-    emplace<Side::Buy>(book, 2, 101);
-    emplace<Side::Buy>(book, 3, 101);
-    emplace<Side::Buy>(book, 4, 101);
-    emplace<Side::Buy>(book, 5, 100);
-    emplace<Side::Sell>(book, 6, 110);
-    emplace<Side::Sell>(book, 7, 111);
+    emplace<Side::Buy>(this->book, 1, 102);
+    emplace<Side::Buy>(this->book, 2, 101);
+    emplace<Side::Buy>(this->book, 3, 101);
+    emplace<Side::Buy>(this->book, 4, 101);
+    emplace<Side::Buy>(this->book, 5, 100);
+    emplace<Side::Sell>(this->book, 6, 110);
+    emplace<Side::Sell>(this->book, 7, 111);
 
     SECTION("order in the middle of a level") {
-        REQUIRE(book.erase(book.find(3))->order_id == 4);
-        REQUIRE_THAT(ids<Side::Buy>(book), RangeEquals<OrderId>({1, 2, 4, 5}));
+        REQUIRE(this->book.erase(this->book.find(3))->order_id == 4);
+        REQUIRE_THAT(ids<Side::Buy>(this->book), RangeEquals<OrderId>({1, 2, 4, 5}));
     }
 
     SECTION("last order of a level that keeps others") {
-        REQUIRE(book.erase(book.find(4))->order_id == 5);
-        REQUIRE_THAT(ids<Side::Buy>(book), RangeEquals<OrderId>({1, 2, 3, 5}));
+        REQUIRE(this->book.erase(this->book.find(4))->order_id == 5);
+        REQUIRE_THAT(ids<Side::Buy>(this->book), RangeEquals<OrderId>({1, 2, 3, 5}));
     }
 
     SECTION("only order at a level") {
-        REQUIRE(book.erase(book.find(1))->order_id == 2);
-        REQUIRE_THAT(ids<Side::Buy>(book), RangeEquals<OrderId>({2, 3, 4, 5}));
+        REQUIRE(this->book.erase(this->book.find(1))->order_id == 2);
+        REQUIRE_THAT(ids<Side::Buy>(this->book), RangeEquals<OrderId>({2, 3, 4, 5}));
     }
 
     SECTION("last order on the side") {
-        REQUIRE(book.erase(book.find(5)) == end<Side::Buy>(book));
-        REQUIRE_THAT(ids<Side::Buy>(book), RangeEquals<OrderId>({1, 2, 3, 4}));
+        REQUIRE(this->book.erase(this->book.find(5)) == end<Side::Buy>(this->book));
+        REQUIRE_THAT(ids<Side::Buy>(this->book), RangeEquals<OrderId>({1, 2, 3, 4}));
     }
 
     SECTION("only order at an ask level") {
-        REQUIRE(book.erase(book.find(6))->order_id == 7);
-        REQUIRE_THAT(ids<Side::Sell>(book), RangeEquals<OrderId>({7}));
-        REQUIRE_THAT(ids<Side::Buy>(book), RangeEquals<OrderId>({1, 2, 3, 4, 5}));
+        REQUIRE(this->book.erase(this->book.find(6))->order_id == 7);
+        REQUIRE_THAT(ids<Side::Sell>(this->book), RangeEquals<OrderId>({7}));
+        REQUIRE_THAT(ids<Side::Buy>(this->book), RangeEquals<OrderId>({1, 2, 3, 4, 5}));
     }
 
     SECTION("last order on the ask side") {
-        book.erase(book.find(6));
-        REQUIRE(book.erase(book.find(7)) == end<Side::Sell>(book));
-        REQUIRE_THAT(ids<Side::Sell>(book), IsEmpty());
+        this->book.erase(this->book.find(6));
+        REQUIRE(this->book.erase(this->book.find(7)) == end<Side::Sell>(this->book));
+        REQUIRE_THAT(ids<Side::Sell>(this->book), IsEmpty());
     }
 }
 
-TEMPLATE_LIST_TEST_CASE("Erased orders can no longer be found", "[book]", Books) {
-    TestType book;
-    emplace<Side::Buy>(book, 1, 100);
-    emplace<Side::Buy>(book, 2, 100);
+TEMPLATE_LIST_TEST_CASE_METHOD(BookFixture, "Erased orders can no longer be found", "[book]", All) {
+    emplace<Side::Buy>(this->book, 1, 100);
+    emplace<Side::Buy>(this->book, 2, 100);
 
-    book.erase(book.find(1));
-    REQUIRE(book.find(1) == end<Side::Buy>(book));
-    REQUIRE(book.find(2)->order_id == 2);
+    this->book.erase(this->book.find(1));
+    REQUIRE(this->book.find(1) == end<Side::Buy>(this->book));
+    REQUIRE(this->book.find(2)->order_id == 2);
 }
 
-TEMPLATE_LIST_TEST_CASE("Find of an unknown id returns end", "[book]", Books) {
+TEMPLATE_LIST_TEST_CASE_METHOD(BookFixture, "Find of an unknown id returns end", "[book]", All) {
     // the Engine detects a miss by comparing against end<Side::Buy>(), whatever the side
-    TestType book;
 
     SECTION("empty book") {
-        REQUIRE(book.find(1) == end<Side::Buy>(book));
-        REQUIRE(book.find(1) == end<Side::Sell>(book));
+        REQUIRE(this->book.find(1) == end<Side::Buy>(this->book));
+        REQUIRE(this->book.find(1) == end<Side::Sell>(this->book));
     }
 
     SECTION("non-empty book") {
-        emplace<Side::Buy>(book, 1, 100);
-        emplace<Side::Sell>(book, 2, 110);
-        REQUIRE(book.find(99) == end<Side::Buy>(book));
-        REQUIRE(book.find(99) == end<Side::Sell>(book));
+        emplace<Side::Buy>(this->book, 1, 100);
+        emplace<Side::Sell>(this->book, 2, 110);
+        REQUIRE(this->book.find(99) == end<Side::Buy>(this->book));
+        REQUIRE(this->book.find(99) == end<Side::Sell>(this->book));
     }
 }
 
-TEMPLATE_LIST_TEST_CASE("Levels iterate in price priority", "[book][level]", Books) {
-    TestType book;
-    emplace<Side::Buy>(book, 1, 100, 1);
-    emplace<Side::Buy>(book, 2, 102, 2);
-    emplace<Side::Buy>(book, 3, 101, 3);
-    emplace<Side::Sell>(book, 4, 111, 4);
-    emplace<Side::Sell>(book, 5, 110, 5);
+TEMPLATE_LIST_TEST_CASE_METHOD(BookFixture, "Levels iterate in price priority", "[book][level]",
+                               All) {
+    emplace<Side::Buy>(this->book, 1, 100, 1);
+    emplace<Side::Buy>(this->book, 2, 102, 2);
+    emplace<Side::Buy>(this->book, 3, 101, 3);
+    emplace<Side::Sell>(this->book, 4, 111, 4);
+    emplace<Side::Sell>(this->book, 5, 110, 5);
 
-    REQUIRE_THAT(level_qtys<Side::Buy>(book), RangeEquals<std::uint64_t>({2, 3, 1}));
-    REQUIRE_THAT(level_qtys<Side::Sell>(book), RangeEquals<std::uint64_t>({5, 4}));
+    REQUIRE_THAT(level_qtys<Side::Buy>(this->book), RangeEquals<std::uint64_t>({2, 3, 1}));
+    REQUIRE_THAT(level_qtys<Side::Sell>(this->book), RangeEquals<std::uint64_t>({5, 4}));
 }
 
-TEMPLATE_LIST_TEST_CASE("Levels track the total quantity of their orders", "[book][level]", Books) {
-    TestType book;
-    emplace<Side::Buy>(book, 1, 100, 10);
-    emplace<Side::Buy>(book, 2, 100, 20);
-    emplace<Side::Buy>(book, 3, 99, 5);
+TEMPLATE_LIST_TEST_CASE_METHOD(BookFixture, "Levels track the total quantity of their orders",
+                               "[book][level]", All) {
+    emplace<Side::Buy>(this->book, 1, 100, 10);
+    emplace<Side::Buy>(this->book, 2, 100, 20);
+    emplace<Side::Buy>(this->book, 3, 99, 5);
 
-    REQUIRE(find_level<Side::Buy>(book, 100)->qty == 30);
-    REQUIRE(find_level<Side::Buy>(book, 99)->qty == 5);
+    REQUIRE(find_level<Side::Buy>(this->book, 100)->qty == 30);
+    REQUIRE(find_level<Side::Buy>(this->book, 99)->qty == 5);
 
-    book.erase(book.find(1));
-    REQUIRE(find_level<Side::Buy>(book, 100)->qty == 20);
+    this->book.erase(this->book.find(1));
+    REQUIRE(find_level<Side::Buy>(this->book, 100)->qty == 20);
 
     // erasing the last order removes the level
-    book.erase(book.find(2));
-    REQUIRE(find_level<Side::Buy>(book, 100) == levels<Side::Buy>(book).end());
-    REQUIRE_THAT(level_qtys<Side::Buy>(book), RangeEquals<std::uint64_t>({5}));
+    this->book.erase(this->book.find(2));
+    REQUIRE(find_level<Side::Buy>(this->book, 100) == levels<Side::Buy>(this->book).end());
+    REQUIRE_THAT(level_qtys<Side::Buy>(this->book), RangeEquals<std::uint64_t>({5}));
 }
 
-TEMPLATE_LIST_TEST_CASE("Find of an unknown price returns the end of levels", "[book][level]",
-                        Books) {
-    TestType book;
-
+TEMPLATE_LIST_TEST_CASE_METHOD(BookFixture, "Find of an unknown price returns the end of levels",
+                               "[book][level]", All) {
     SECTION("empty book") {
-        REQUIRE(find_level<Side::Buy>(book, 100) == levels<Side::Buy>(book).end());
-        REQUIRE(find_level<Side::Sell>(book, 100) == levels<Side::Sell>(book).end());
+        REQUIRE(find_level<Side::Buy>(this->book, 100) == levels<Side::Buy>(this->book).end());
+        REQUIRE(find_level<Side::Sell>(this->book, 100) == levels<Side::Sell>(this->book).end());
     }
 
     SECTION("price only on the other side") {
-        emplace<Side::Sell>(book, 1, 100);
-        REQUIRE(find_level<Side::Buy>(book, 100) == levels<Side::Buy>(book).end());
-        REQUIRE(find_level<Side::Sell>(book, 101) == levels<Side::Sell>(book).end());
+        emplace<Side::Sell>(this->book, 1, 100);
+        REQUIRE(find_level<Side::Buy>(this->book, 100) == levels<Side::Buy>(this->book).end());
+        REQUIRE(find_level<Side::Sell>(this->book, 101) == levels<Side::Sell>(this->book).end());
     }
 }
 
-TEMPLATE_LIST_TEST_CASE("A level iterator can be made from an order iterator", "[book][level]",
-                        Books) {
+TEMPLATE_LIST_TEST_CASE_METHOD(BookFixture, "A level iterator can be made from an order iterator",
+                               "[book][level]", All) {
     // the Engine updates the level's qty when it shrinks an order in place
-    TestType book;
-    emplace<Side::Sell>(book, 1, 110, 10);
-    emplace<Side::Sell>(book, 2, 111, 7);
+    emplace<Side::Sell>(this->book, 1, 110, 10);
+    emplace<Side::Sell>(this->book, 2, 111, 7);
 
-    auto const level = typename TestType::level_iterator{book.find(2)};
-    REQUIRE(level == find_level<Side::Sell>(book, 111));
+    auto const level = typename TestType::level_iterator{this->book.find(2)};
+    REQUIRE(level == find_level<Side::Sell>(this->book, 111));
 
     level->qty -= 3;
-    REQUIRE(find_level<Side::Sell>(book, 111)->qty == 4);
+    REQUIRE(find_level<Side::Sell>(this->book, 111)->qty == 4);
 }
 
 // Edge cases
 
-TEMPLATE_LIST_TEST_CASE("An empty side has begin == end", "[book][edge]", Books) {
-    TestType book;
-    REQUIRE(begin<Side::Buy>(book) == end<Side::Buy>(book));
-    REQUIRE(begin<Side::Sell>(book) == end<Side::Sell>(book));
+TEMPLATE_LIST_TEST_CASE_METHOD(BookFixture, "An empty side has begin == end", "[book][edge]", All) {
+    REQUIRE(begin<Side::Buy>(this->book) == end<Side::Buy>(this->book));
+    REQUIRE(begin<Side::Sell>(this->book) == end<Side::Sell>(this->book));
 
     // the other side being populated changes nothing
-    emplace<Side::Sell>(book, 1, 110);
-    REQUIRE(begin<Side::Buy>(book) == end<Side::Buy>(book));
+    emplace<Side::Sell>(this->book, 1, 110);
+    REQUIRE(begin<Side::Buy>(this->book) == end<Side::Buy>(this->book));
 }
 
-TEMPLATE_LIST_TEST_CASE("The iterator returned by emplace walks into worse levels", "[book][edge]",
-                        Books) {
-    TestType book;
-    emplace<Side::Buy>(book, 1, 99);
-    auto it = emplace<Side::Buy>(book, 2, 100);
+TEMPLATE_LIST_TEST_CASE_METHOD(BookFixture,
+                               "The iterator returned by emplace walks into worse levels",
+                               "[book][edge]", All) {
+    emplace<Side::Buy>(this->book, 1, 99);
+    auto it = emplace<Side::Buy>(this->book, 2, 100);
 
     REQUIRE((++it)->order_id == 1);
-    REQUIRE(++it == end<Side::Buy>(book));
+    REQUIRE(++it == end<Side::Buy>(this->book));
 }
 
-TEMPLATE_LIST_TEST_CASE("Iterators stay valid across emplace", "[book][edge]", Books) {
-    TestType book;
-    auto it = emplace<Side::Buy>(book, 1, 100);
+TEMPLATE_LIST_TEST_CASE_METHOD(BookFixture, "Iterators stay valid across emplace", "[book][edge]",
+                               All) {
+    auto it = emplace<Side::Buy>(this->book, 1, 100);
 
-    emplace<Side::Buy>(book, 2, 101); // better level, before it
-    emplace<Side::Buy>(book, 3, 100); // same level, after it
-    emplace<Side::Buy>(book, 4, 99);  // worse level, after it
-    emplace<Side::Sell>(book, 5, 110);
+    emplace<Side::Buy>(this->book, 2, 101); // better level, before it
+    emplace<Side::Buy>(this->book, 3, 100); // same level, after it
+    emplace<Side::Buy>(this->book, 4, 99);  // worse level, after it
+    emplace<Side::Sell>(this->book, 5, 110);
 
     REQUIRE(it->order_id == 1);
     REQUIRE((++it)->order_id == 3);
     REQUIRE((++it)->order_id == 4);
-    REQUIRE(++it == end<Side::Buy>(book));
+    REQUIRE(++it == end<Side::Buy>(this->book));
 }
 
-TEMPLATE_LIST_TEST_CASE("Erasing from begin until end empties only that side", "[book][edge]",
-                        Books) {
-    TestType book;
-    emplace<Side::Buy>(book, 1, 100);
-    emplace<Side::Buy>(book, 2, 101);
-    emplace<Side::Buy>(book, 3, 100);
-    emplace<Side::Sell>(book, 4, 110);
+TEMPLATE_LIST_TEST_CASE_METHOD(BookFixture, "Erasing from begin until end empties only that side",
+                               "[book][edge]", All) {
+    emplace<Side::Buy>(this->book, 1, 100);
+    emplace<Side::Buy>(this->book, 2, 101);
+    emplace<Side::Buy>(this->book, 3, 100);
+    emplace<Side::Sell>(this->book, 4, 110);
 
     std::vector<OrderId> erased;
-    for (auto it = begin<Side::Buy>(book); it != end<Side::Buy>(book);) {
+    for (auto it = begin<Side::Buy>(this->book); it != end<Side::Buy>(this->book);) {
         erased.push_back(it->order_id);
-        it = book.erase(it);
+        it = this->book.erase(it);
     }
 
     REQUIRE_THAT(erased, RangeEquals<OrderId>({2, 1, 3}));
-    REQUIRE_THAT(ids<Side::Buy>(book), IsEmpty());
-    REQUIRE_THAT(ids<Side::Sell>(book), RangeEquals<OrderId>({4}));
+    REQUIRE_THAT(ids<Side::Buy>(this->book), IsEmpty());
+    REQUIRE_THAT(ids<Side::Sell>(this->book), RangeEquals<OrderId>({4}));
 }
 
-TEMPLATE_LIST_TEST_CASE("A removed price level can be emplaced into again", "[book][edge]", Books) {
-    TestType book;
-    emplace<Side::Sell>(book, 1, 110);
-    emplace<Side::Sell>(book, 2, 111);
-    book.erase(book.find(1));
+TEMPLATE_LIST_TEST_CASE_METHOD(BookFixture, "A removed price level can be emplaced into again",
+                               "[book][edge]", All) {
+    emplace<Side::Sell>(this->book, 1, 110);
+    emplace<Side::Sell>(this->book, 2, 111);
+    this->book.erase(this->book.find(1));
 
-    emplace<Side::Sell>(book, 3, 110);
-    REQUIRE_THAT(ids<Side::Sell>(book), RangeEquals<OrderId>({3, 2}));
+    emplace<Side::Sell>(this->book, 3, 110);
+    REQUIRE_THAT(ids<Side::Sell>(this->book), RangeEquals<OrderId>({3, 2}));
 }
 
-TEMPLATE_LIST_TEST_CASE("Extreme prices keep their order", "[book][edge]", Books) {
+TEMPLATE_LIST_TEST_CASE_METHOD(BookFixture, "Extreme prices keep their order", "[book][edge]",
+                               All) {
     constexpr auto max = std::numeric_limits<Price>::max();
 
-    TestType book;
-    emplace<Side::Buy>(book, 1, 0);
-    emplace<Side::Buy>(book, 2, max);
-    emplace<Side::Sell>(book, 3, max);
-    emplace<Side::Sell>(book, 4, 0);
+    emplace<Side::Buy>(this->book, 1, 0);
+    emplace<Side::Buy>(this->book, 2, max);
+    emplace<Side::Sell>(this->book, 3, max);
+    emplace<Side::Sell>(this->book, 4, 0);
 
-    REQUIRE_THAT(ids<Side::Buy>(book), RangeEquals<OrderId>({2, 1}));
-    REQUIRE_THAT(ids<Side::Sell>(book), RangeEquals<OrderId>({4, 3}));
+    REQUIRE_THAT(ids<Side::Buy>(this->book), RangeEquals<OrderId>({2, 1}));
+    REQUIRE_THAT(ids<Side::Sell>(this->book), RangeEquals<OrderId>({4, 3}));
 }
 
-TEMPLATE_LIST_TEST_CASE("A const book can be iterated", "[book][edge]", Books) {
+TEMPLATE_LIST_TEST_CASE_METHOD(BookFixture, "A const book can be iterated", "[book][edge]", All) {
     // the Engine's spread() iterates a const book
-    TestType book;
-    emplace<Side::Buy>(book, 1, 100);
-    emplace<Side::Buy>(book, 2, 99);
+    emplace<Side::Buy>(this->book, 1, 100);
+    emplace<Side::Buy>(this->book, 2, 99);
 
-    auto const &cbook = book;
+    auto const &cbook = this->book;
     auto const it = begin<Side::Buy>(cbook);
     REQUIRE(it->order_id == 1);
     REQUIRE(std::next(it, 2) == end<Side::Buy>(cbook));
 }
 
-TEMPLATE_LIST_TEST_CASE("A const book's levels can be walked", "[book][edge]", Books) {
+TEMPLATE_LIST_TEST_CASE_METHOD(BookFixture, "A const book's levels can be walked", "[book][edge]",
+                               All) {
     // the Engine's volume() looks up levels of a const book
-    TestType book;
-    emplace<Side::Buy>(book, 1, 100, 3);
-    emplace<Side::Buy>(book, 2, 99, 4);
+    emplace<Side::Buy>(this->book, 1, 100, 3);
+    emplace<Side::Buy>(this->book, 2, 99, 4);
 
-    auto const &cbook = book;
+    auto const &cbook = this->book;
     REQUIRE(find_level<Side::Buy>(cbook, 99)->qty == 4);
     REQUIRE_THAT(level_qtys<Side::Buy>(cbook), RangeEquals<std::uint64_t>({3, 4}));
 }
