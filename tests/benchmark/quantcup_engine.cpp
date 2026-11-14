@@ -10,6 +10,7 @@ extern "C" {
 #include <cstdint>
 #include <cstring>
 #include <functional>
+#include <optional>
 
 using namespace ome::book;
 
@@ -18,7 +19,7 @@ using namespace ome::book;
 
 namespace {
 
-Engine book;
+std::optional<Engine> book;
 
 auto execute(t_order const &order, OrderId /*id*/, Order const &order_, Price price,
              std::uint64_t quantity) {
@@ -38,17 +39,17 @@ auto execute(t_order const &order, OrderId /*id*/, Order const &order_, Price pr
 
 } // namespace
 
-void init() { book = Engine{MAX_LIVE_ORDERS}; }
+void init() { book.emplace(MAX_LIVE_ORDERS); }
 
-void destroy() { book = Engine{}; }
+void destroy() { book.reset(); }
 
 auto limit(t_order order) -> t_orderid {
     auto const side = is_ask(order.side) != 0 ? Side::Sell : Side::Buy;
     Order const book_order{{order.size}, side, order.price, {}, std::to_array(order.trader)};
-    return *book.add(book_order, std::bind_front(&execute, order));
+    return *book->add(book_order, std::bind_front(&execute, order));
 }
 
-void cancel(t_orderid orderid) { [[maybe_unused]] auto const res = book.cancel(orderid); }
+void cancel(t_orderid orderid) { [[maybe_unused]] auto const res = book->cancel(orderid); }
 
 // NOLINTEND(cppcoreguidelines-pro-bounds-array-to-pointer-decay)
 // NOLINTEND(cppcoreguidelines-avoid-non-const-global-variables)

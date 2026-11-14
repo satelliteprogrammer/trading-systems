@@ -44,6 +44,12 @@ template <concepts::OrderBook Book> class BasicEngine {
     /// \param max_orders exclusive upper bound on order IDs
     explicit BasicEngine(std::size_t max_orders = default_max_orders);
 
+    BasicEngine(BasicEngine const &) = delete;
+    auto operator=(BasicEngine const &) -> BasicEngine & = delete;
+    BasicEngine(BasicEngine &&) = delete;
+    auto operator=(BasicEngine &&) -> BasicEngine & = delete;
+    ~BasicEngine() = default;
+
     /// Adds order to the book, matching it first against the opposite side.
     ///
     /// time: O(log # price levels) for first order at limit, O(1) for all others
