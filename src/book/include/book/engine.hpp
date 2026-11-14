@@ -1,6 +1,7 @@
 #pragma once
 
 #include <book/books/node/indexedbook.hpp>
+#include <book/concepts.hpp>
 #include <book/order.hpp>
 
 #include <cstddef>
@@ -26,7 +27,7 @@ struct ModifyOps {
     std::optional<std::uint64_t> qty = std::nullopt;
 };
 
-class Engine {
+template <concepts::OrderBook Book> class BasicEngine {
   public:
     /// Called once per fill with the id of the resting order, the resting order itself,
     /// the execution price and the executed quantity.
@@ -40,8 +41,8 @@ class Engine {
 
     static constexpr std::size_t default_max_orders = 1'000'000;
 
-    /// \param max_orders expected number of orders; currently unused.
-    explicit Engine(std::size_t max_orders = default_max_orders);
+    /// \param max_orders exclusive upper bound on order IDs
+    explicit BasicEngine(std::size_t max_orders = default_max_orders);
 
     /// Adds order to the book, matching it first against the opposite side.
     ///
@@ -77,8 +78,10 @@ class Engine {
     /// Matches order against the opposite side's levels, best price first.
     template <Side> void execute(Order &order, OrderCallback on_fill);
 
-    books::node::IndexedBook book;
+    Book book;
     OrderId cur_order_id_{0};
 };
+
+using Engine = BasicEngine<books::node::IndexedBook>;
 
 } // namespace ome::book
