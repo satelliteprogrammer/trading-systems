@@ -19,9 +19,10 @@ concept OrderBookIterator =
     std::forward_iterator<T> && std::same_as<std::iter_value_t<T>, RestingOrder> &&
     std::indirectly_writable<T, RestingOrder>;
 
-template <typename T>
+template <typename L, typename I>
 concept OrderBookLevelIterator =
-    std::forward_iterator<T> && requires(std::iter_reference_t<T> level) {
+    std::forward_iterator<L> && OrderBookIterator<I> && std::constructible_from<L, I> &&
+    !std::convertible_to<I, L> && requires(std::iter_reference_t<L> level) {
         { level.qty } -> std::same_as<std::uint64_t &>;
     };
 
@@ -45,9 +46,7 @@ concept OrderBookSide = IterableSide<T, S> && IterableSide<T const, S> &&
 
 template <typename T>
 concept OrderBook = std::constructible_from<T, std::size_t> && OrderBookIterator<iterator_t<T>> &&
-                    OrderBookLevelIterator<level_iterator_t<T>> &&
-                    std::constructible_from<level_iterator_t<T>, iterator_t<T>> &&
-                    !std::convertible_to<iterator_t<T>, level_iterator_t<T>> &&
+                    OrderBookLevelIterator<level_iterator_t<T>, iterator_t<T>> &&
                     OrderBookSide<T, Side::Buy> && OrderBookSide<T, Side::Sell> &&
                     requires(T &book, T const &cbook, iterator_t<T> it, OrderId id) {
                         { book.erase(it) } -> std::same_as<iterator_t<T>>;
