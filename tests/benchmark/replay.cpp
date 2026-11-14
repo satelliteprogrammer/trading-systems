@@ -46,49 +46,9 @@ auto LobsterReplay::next() -> std::optional<Trade> {
     return message_to_trade(msg);
 }
 
-auto LobsterReplay::validate(book::Engine const &book) const -> ValidationResult {
-    auto previous_message = messages_[message_index_ - 1];
-    auto idx = previous_message.index;
-    if (!idx) {
-        // last message was synthetic, no expected orderbook line to compare against
-        return {.valid = true};
-    }
-
-    for (auto const &expected_bid : expected_orderbooks_[*idx].bids) {
-        if (auto actual_qty = book.volume(expected_bid.price);
-            actual_qty != expected_bid.quantity) {
-            tools::lobster::Limit const actual{
-                .price = expected_bid.price,
-                .quantity = actual_qty.value(),
-            };
-            return {
-                .valid = false,
-                .message = previous_message,
-                .expected_direction = tools::lobster::Direction::BUY,
-                .expected = expected_bid,
-                .actual = actual,
-            };
-        }
-    }
-
-    for (auto const &expected_ask : expected_orderbooks_[*idx].asks) {
-        if (auto actual_qty = book.volume(expected_ask.price);
-            actual_qty != expected_ask.quantity) {
-            tools::lobster::Limit const actual{
-                .price = expected_ask.price,
-                .quantity = actual_qty.value(),
-            };
-            return {
-                .valid = false,
-                .message = previous_message,
-                .expected_direction = tools::lobster::Direction::SELL,
-                .expected = expected_ask,
-                .actual = actual,
-            };
-        }
-    }
-
-    return {.valid = true};
+void LobsterReplay::rewind() {
+    message_index_ = 0;
+    id_map_.clear();
 }
 
 auto LobsterReplay::book_order(book::OrderId external_id)

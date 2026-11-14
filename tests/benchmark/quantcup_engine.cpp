@@ -1,3 +1,4 @@
+#include <book/books/all.hpp>
 #include <book/engine.hpp>
 #include <book/order.hpp>
 
@@ -19,7 +20,15 @@ using namespace ome::book;
 
 namespace {
 
-std::optional<Engine> book;
+// The QuantCup drivers call a C API backed by a single global engine, so each book gets its own
+// executable: CMake sets QUANTCUP_BOOK to the book type to build against.
+#ifdef QUANTCUP_BOOK
+using QuantcupEngine = BasicEngine<QUANTCUP_BOOK>;
+#else
+using QuantcupEngine = Engine;
+#endif
+
+std::optional<QuantcupEngine> book;
 
 auto execute(t_order const &order, OrderId /*id*/, Order const &order_, Price price,
              std::uint64_t quantity) {
