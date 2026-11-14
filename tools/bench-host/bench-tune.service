@@ -1,0 +1,12 @@
+# Managed by trading-systems tools/bench-host
+[Unit]
+Description=Benchmark mode tuning
+Documentation=https://github.com/satelliteprogrammer/trading-systems/tree/main/tools/bench-host
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# loader.conf has `default @saved`: without this the next boot would come back here.
+ExecStart=/usr/bin/bootctl set-oneshot linux-cachyos.conf
+# Boost makes the clock depend on temperature and on how many cores are busy.
+ExecStart=/bin/sh -c 'echo 0 > /sys/devices/system/cpu/cpufreq/boost'
