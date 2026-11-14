@@ -15,3 +15,6 @@ cc400ec28aec7d1d574b83699bc13506eb13ff88
 
 # refactor(book): name node iterator members after levels and orders
 a83f4962d6a03141f4e9e54a0c76e747d18c5e94
+
+# refactor(book): run the book contract tests through a fixture
+40685ce012569cef28ed8b3b77c56f284bdc0fcd
