@@ -19,6 +19,7 @@ if(PROJECT_IS_TOP_LEVEL AND BUILD_TESTING)
 endif()
 
 add_subdirectory(src/book)
+add_subdirectory(src/meta)
 
 if(PROJECT_IS_TOP_LEVEL AND BUILD_TESTING)
   add_subdirectory(external)
