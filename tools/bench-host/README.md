@@ -17,12 +17,10 @@ booted by systemd-boot, with Cool'n'Quiet on in the BIOS and MSI Game Boost off.
   interrupts to CCX0 (`0-3,8-11`).
 - Holds the clock at a fixed 3.0 GHz, the base clock: the `performance` governor with boost off,
   so results don't depend on temperature or on how many cores are busy.
-- Queues the normal entry for the next boot: `loader.conf` has `default @saved`, which would
-  otherwise keep coming back to the bench entry.
 
 ## Install
 
-It adds three files and edits nothing:
+It adds three files and pins systemd-boot's default to the normal entry:
 
 - `/etc/systemd/system/bench.target`
 - `/etc/systemd/system/bench-tune.service`, started only by `bench.target`
@@ -33,11 +31,19 @@ It adds three files and edits nothing:
 sudo tools/bench-host/bench-host.sh install
 ```
 
+The default is set with `bootctl set-default linux-cachyos.conf`, an EFI variable that overrides
+`default @saved` in `loader.conf`. Without it, picking the bench entry in the boot menu would make
+it the saved default, and later boots would keep coming back to it. With it, systemd-boot stops
+remembering menu picks: every boot is the normal one unless the bench entry is picked. A firmware
+reset can clear the variable; run `install` again after one.
+
 `sdboot-manage` only rewrites entries named after a kernel and only removes entries whose kernel
 was uninstalled, so the bench entry survives kernel updates. Run `install` again if the normal
 entry's options change.
 
 ## Use
+
+Pick "Linux CachyOS (bench)" in the boot menu, or from the normal boot:
 
 ```bash
 sudo systemctl reboot --boot-loader-entry=bench-linux-cachyos.conf
@@ -79,6 +85,6 @@ taskset -c 4 sh -c 'while :; do :; done' & sleep 3; for i in 1 2 3 4 5; do awk '
 sudo tools/bench-host/bench-host.sh uninstall
 ```
 
-It removes the three files (only if they were written by `install`) and reloads systemd. Nothing
-else needs undoing. In the bench boot, `sudo systemctl isolate graphical.target` brings the desktop
-back without rebooting, but the cpu isolation stays until the next boot.
+It removes the three files (only if they were written by `install`), reloads systemd and unsets
+the pinned default, so `loader.conf` decides again. In the bench boot, `sudo systemctl isolate graphical.target`
+brings the desktop back without rebooting, but the cpu isolation stays until the next boot.

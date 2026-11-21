@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 # Installs, removes or checks the headless benchmark boot mode. See README.md.
 #
-# BENCH_ESP, BENCH_UNIT_DIR and BENCH_SYSTEMCTL point the script at another tree, for testing it
-# without root.
+# BENCH_ESP, BENCH_UNIT_DIR, BENCH_SYSTEMCTL and BENCH_BOOTCTL point the script at another tree,
+# for testing it without root.
 set -euo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
 esp=${BENCH_ESP:-/boot}
 unit_dir=${BENCH_UNIT_DIR:-/etc/systemd/system}
 systemctl=${BENCH_SYSTEMCTL:-systemctl}
+bootctl=${BENCH_BOOTCTL:-bootctl}
 
 marker='# Managed by trading-systems tools/bench-host'
 base_entry=$esp/loader/entries/linux-cachyos.conf
@@ -55,6 +56,10 @@ cmd_install() {
     echo "options ${options[*]} $bench_options"
   } >"$entry"
   "$systemctl" daemon-reload
+  # loader.conf has `default @saved`, which makes a bench entry picked in the boot menu the
+  # default for every boot after it. A default set here overrides loader.conf and is never saved
+  # over, so every boot that isn't picked explicitly is the normal one.
+  "$bootctl" set-default "${base_entry##*/}"
 
   echo "Installed. Boot into it once with:"
   echo "  sudo systemctl reboot --boot-loader-entry=${entry##*/}"
@@ -65,6 +70,7 @@ cmd_uninstall() {
   for f in "${files[@]}"; do check_ours "$f"; done
   rm -f "${files[@]}"
   "$systemctl" daemon-reload
+  "$bootctl" set-default ''
   echo "Removed."
 }
 
